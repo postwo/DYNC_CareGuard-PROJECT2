@@ -18,9 +18,13 @@ if [ ! -e "${UNITS[0]}" ]; then
     exit 1
 fi
 
+# systemctl에는 유닛 이름을 인자 하나하나로 넘겨야 한다. "$(basename -a ...)"처럼 따옴표로 감싸면
+# 줄바꿈으로 이어진 문자열 하나가 돼 첫 유닛만 처리되거나 "유닛 없음"으로 실패한다.
+mapfile -t UNIT_NAMES < <(basename -a "${UNITS[@]}")
+
 sudo cp "${UNITS[@]}" /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now "$(basename -a "${UNITS[@]}")"
+sudo systemctl enable --now "${UNIT_NAMES[@]}"
 
 echo "설치 완료. 상태 확인:"
-sudo systemctl status "$(basename -a "${UNITS[@]}")" --no-pager -l | head -60
+sudo systemctl status "${UNIT_NAMES[@]}" --no-pager -l | head -60
