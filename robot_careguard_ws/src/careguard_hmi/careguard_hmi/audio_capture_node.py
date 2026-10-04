@@ -18,8 +18,10 @@ WebSocket(/ws/robot/{robot_code}/audio/uplink)으로 바이너리 전송.
 파라미터를 맞춰봐야 한다.
 """
 import asyncio
+import os
 import subprocess
 import threading
+import traceback
 
 import rclpy
 from rclpy.node import Node
@@ -32,11 +34,12 @@ try:
 except ImportError:  # noqa: BLE001 - 모델 파일처럼(audio_player.py 참고) 설치 전에도 노드는 뜨게 둔다
     opuslib = None
 
+# 인코더가 돌려주는 오류. opuslib가 없으면 인코더를 만들 일도 없어 빈 튜플이다.
+OPUS_ERRORS = (getattr(opuslib, 'OpusError', ValueError), ValueError) if opuslib is not None else ()
+
 # arecord가 못 찾을 때를 대비해 카드 지정 없이 기본 캡처 장치를 쓴다 — LIMO(R-07)에서
 # 실측한 카드 번호(USB PnP Audio Device = card 0)를 고정하면 다른 로봇에서 깨질 수
 # 있어, 환경변수로 오버라이드 가능하게만 해둔다.
-import os  # noqa: E402 - config 임포트 이후 표준 라이브러리 위치를 맞추기보다 관련 상수 옆에 둔다
-
 CAPTURE_DEVICE = os.environ.get('CAREGUARD_MIC_DEVICE', 'default')
 
 
@@ -90,48 +93,74 @@ class MicCaptureSession:
         try:
             self._process.terminate()
             self._process.wait(timeout=2.0)
-        except Exception:  # noqa: BLE001 - 정리 경로라 실패해도 계속 진행
+        except (OSError, subprocess.TimeoutExpired):
+            # terminate가 안 먹히거나(2초 안에 안 죽음) 이미 죽은 프로세스면 강제 종료를 시도한다.
             try:
                 self._process.kill()
-            except Exception:  # noqa: BLE001
-                pass
+            except OSError:
+                pass  # 이미 죽어 있음
         self._process = None
 
     def _run(self) -> None:
         asyncio.set_event_loop(self._loop)
         try:
             self._loop.run_until_complete(self._capture_and_send())
-        except Exception as exc:  # noqa: BLE001 - 백그라운드 스레드, 예외를 삼키고 로그만 남긴다
-            self._logger.error(f'마이크 캡처 스레드가 예외로 종료했습니다: {exc}')
+        except Exception:  # noqa: BLE001 - 스레드의 최상위 경계: 어떤 예외든 스택트레이스를 남기고 스레드를 끝낸다
+            self._logger.error(f'마이크 캡처 스레드가 예외로 종료했습니다:\n{traceback.format_exc()}')
+        finally:
+            self._terminate_arecord()
+
+    def _spawn_arecord(self) -> bool:
+        try:
+            self._process = subprocess.Popen(
+                [
+                    'arecord', '-D', CAPTURE_DEVICE, '-f', 'S16_LE',
+                    '-r', str(config.AUDIO_SAMPLE_RATE), '-c', str(config.AUDIO_CHANNELS),
+                    '-t', 'raw', '-q',
+                ],
+                stdout=subprocess.PIPE,
+            )
+        except OSError as exc:  # arecord 미설치·권한 문제 등
+            self._logger.error(f'arecord를 시작하지 못했습니다(설치·마이크 장치 확인): {exc}')
+            return False
+        return True
 
     async def _capture_and_send(self) -> None:
         import websockets
 
+        # 재연결 루프가 잡을 "연결 문제"만 나열한다. 인코딩 같은 다른 오류는 이 루프가 연결 실패로
+        # 오인하지 않도록 _pump_frames 안에서 따로 처리한다.
+        connection_errors = (OSError, websockets.WebSocketException, asyncio.TimeoutError)
+
         self._encoder = opuslib.Encoder(config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS, opuslib.APPLICATION_VOIP)
         self._encoder.complexity = 10  # Orin NX는 CPU 여유가 있어 최대 복잡도를 쓴다(음질 우선)
 
-        self._process = subprocess.Popen(
-            [
-                'arecord', '-D', CAPTURE_DEVICE, '-f', 'S16_LE',
-                '-r', str(config.AUDIO_SAMPLE_RATE), '-c', str(config.AUDIO_CHANNELS),
-                '-t', 'raw', '-q',
-            ],
-            stdout=subprocess.PIPE,
-        )
-
         url = f'{config.SERVER_WS_URL}/ws/robot/{config.ROBOT_CODE}/audio/uplink'
+        delay = config.AUDIO_WS_RECONNECT_DELAY_SEC
         while not self._stop_event.is_set():
+            # arecord가 죽었으면(장치가 잠깐 사라지는 등) 다시 띄운다. 예전엔 한 번 죽으면 되살리지
+            # 않았고, 읽기가 곧바로 EOF를 돌려줘서 지연 없이 서버에 재접속만 무한 반복했다.
+            if self._process is None or self._process.poll() is not None:
+                self._terminate_arecord()
+                if not self._spawn_arecord():
+                    await asyncio.sleep(delay)
+                    continue
+
             try:
                 async with websockets.connect(url) as ws:
                     self._logger.info(f'마이크 업링크 연결됨: {url}')
                     await self._pump_frames(ws)
-            except Exception as exc:  # noqa: BLE001 - 재연결 루프이므로 모든 예외를 삼킨다
+            except connection_errors as exc:
                 if self._stop_event.is_set():
                     break
-                self._logger.warn(
-                    f'마이크 업링크 연결 실패, {config.AUDIO_WS_RECONNECT_DELAY_SEC}s 후 재시도: {exc}'
-                )
-                await asyncio.sleep(config.AUDIO_WS_RECONNECT_DELAY_SEC)
+                self._logger.warn(f'마이크 업링크 연결 실패, {delay}s 후 재시도: {exc}')
+                await asyncio.sleep(delay)
+                continue
+
+            if not self._stop_event.is_set():
+                # 연결 오류 없이 돌아왔다 = 캡처가 끝났다(arecord EOF). 바로 다시 돌지 말고 잠깐 쉰다.
+                self._logger.warn(f'마이크 캡처가 중단돼 {delay}s 후 다시 시작합니다')
+                await asyncio.sleep(delay)
 
         self._terminate_arecord()
 
@@ -144,7 +173,11 @@ class MicCaptureSession:
             pcm = await loop.run_in_executor(None, self._read_exact, config.AUDIO_FRAME_BYTES)
             if pcm is None:
                 break  # arecord가 죽었거나 EOF
-            frame = self._encoder.encode(pcm, config.AUDIO_FRAME_SAMPLES)
+            try:
+                frame = self._encoder.encode(pcm, config.AUDIO_FRAME_SAMPLES)
+            except OPUS_ERRORS as exc:
+                self._logger.warn(f'Opus 인코딩 실패, 이 프레임을 건너뜁니다: {exc}')
+                continue
             await ws.send(frame)
 
     def _read_exact(self, n: int) -> bytes | None:

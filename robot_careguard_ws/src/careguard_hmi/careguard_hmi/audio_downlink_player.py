@@ -15,6 +15,7 @@ JITTER_MAX_QUEUE_FRAMES를 넘으면 오래된 프레임을 버려 지연이 계
 
 빌드/실행 미검증.
 """
+import asyncio
 import shutil
 import subprocess
 import threading
@@ -32,6 +33,9 @@ try:
     import opuslib
 except ImportError:  # noqa: BLE001 - audio_player.py와 같은 이유로 미설치여도 노드는 뜨게 둔다
     opuslib = None
+
+# 디코더/인코더가 돌려주는 오류. opuslib가 없으면 디코더를 만들 일도 없어 빈 튜플이다.
+OPUS_ERRORS = (getattr(opuslib, 'OpusError', ValueError), ValueError) if opuslib is not None else ()
 
 _SILENCE_FRAME = b'\x00' * config.AUDIO_FRAME_BYTES
 _PLAYER_CANDIDATES = ('paplay', 'aplay')  # audio_player.py와 같은 폴백 순서
@@ -91,21 +95,33 @@ class CallPlaybackSession:
                 return candidate
         return _PLAYER_CANDIDATES[0]
 
-    def start(self) -> None:
+    def start(self) -> bool:
+        """재생을 시작한다. 이미 진행 중이면 True, 시작하지 못하면 False — 호출부가 재생이 안 되는데
+        오디오를 받아 오는 일이 없도록 결과를 본다."""
         if self.is_running:
             self._logger.warn('통화 재생이 이미 진행 중입니다 — 새 시작 요청을 무시합니다')
-            return
+            return True
         if opuslib is None:
             self._logger.error('opuslib가 설치돼 있지 않아 통화 재생을 시작할 수 없습니다 (pip install opuslib)')
-            return
+            return False
 
-        self._decoder = opuslib.Decoder(config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS)
+        try:
+            self._decoder = opuslib.Decoder(config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS)
+        except OPUS_ERRORS as exc:
+            self._logger.error(f'Opus 디코더를 만들지 못했습니다: {exc}')
+            return False
         self._buffer.clear()
-        self._process = self._spawn_player()
+        try:
+            self._process = self._spawn_player()
+        except OSError as exc:  # paplay/aplay 미설치·권한 문제 등
+            self._logger.error(f'재생 프로세스({self._player_cmd})를 시작하지 못했습니다: {exc}')
+            self._decoder = None
+            return False
         self._stop_event = threading.Event()
         self._playback_thread = threading.Thread(target=self._playback_loop, daemon=True)
         self._playback_thread.start()
         self._logger.info(f'통화 재생 시작 (player={self._player_cmd})')
+        return True
 
     def stop(self) -> None:
         if not self.is_running:
@@ -125,7 +141,7 @@ class CallPlaybackSession:
             return
         try:
             pcm = self._decoder.decode(encoded, config.AUDIO_FRAME_SAMPLES)
-        except Exception as exc:  # noqa: BLE001 - 손상된 프레임 하나 때문에 통화 전체가 끊기면 안 된다
+        except OPUS_ERRORS as exc:  # 손상된 프레임 하나 때문에 통화 전체가 끊기면 안 된다
             self._logger.warn(f'Opus 디코딩 실패, 이 프레임을 건너뜁니다: {exc}')
             return
         self._buffer.push(pcm)
@@ -149,11 +165,12 @@ class CallPlaybackSession:
                 self._process.stdin.close()
             self._process.terminate()
             self._process.wait(timeout=2.0)
-        except Exception:  # noqa: BLE001 - 정리 경로
+        except (OSError, subprocess.TimeoutExpired):
+            # terminate가 안 먹히거나(2초 안에 안 죽음) 이미 죽은 프로세스면 강제 종료를 시도한다.
             try:
                 self._process.kill()
-            except Exception:  # noqa: BLE001
-                pass
+            except OSError:
+                pass  # 이미 죽어 있음
         self._process = None
 
     def _playback_loop(self) -> None:
@@ -176,7 +193,7 @@ class CallPlaybackSession:
                 if self._process is not None and self._process.stdin is not None:
                     self._process.stdin.write(pcm)
                     self._process.stdin.flush()
-            except (BrokenPipeError, ValueError):
+            except (OSError, ValueError):  # BrokenPipeError 포함 — 재생 프로세스가 죽었거나 파이프가 닫힘
                 self._logger.warn('재생 프로세스 파이프가 끊겨 재생을 중단합니다')
                 return
 
@@ -199,8 +216,9 @@ class AudioDownlinkPlayerNode(Node):
 
     def _on_call_state(self, msg: Bool):
         if msg.data:
-            self._session.start()
-            self._start_ws_receiver()
+            # 재생을 시작하지 못했다면(플레이어 없음 등) 오디오를 받아 와 봐야 소리 낼 곳이 없다.
+            if self._session.start():
+                self._start_ws_receiver()
         else:
             self._stop_ws_receiver()
             self._session.stop()
@@ -220,12 +238,13 @@ class AudioDownlinkPlayerNode(Node):
         self._ws_thread = None
 
     def _run_ws_receiver(self) -> None:
-        import asyncio
         asyncio.run(self._receive_forever())
 
     async def _receive_forever(self) -> None:
         import websockets
 
+        # 재연결 대상은 "연결 문제"뿐이다. 프레임 디코딩 오류는 on_frame_received가 프레임 단위로 처리한다.
+        connection_errors = (OSError, websockets.WebSocketException, asyncio.TimeoutError)
         url = f'{config.SERVER_WS_URL}/ws/robot/{config.ROBOT_CODE}/audio/downlink'
         while not self._ws_stop_event.is_set():
             try:
@@ -235,14 +254,18 @@ class AudioDownlinkPlayerNode(Node):
                         if self._ws_stop_event.is_set():
                             break
                         self._session.on_frame_received(frame)
-            except Exception as exc:  # noqa: BLE001 - 재연결 루프이므로 모든 예외를 삼킨다
+            except connection_errors as exc:
                 if self._ws_stop_event.is_set():
                     break
                 self.get_logger().warn(
                     f'통화 다운링크 연결 실패, {config.AUDIO_WS_RECONNECT_DELAY_SEC}s 후 재시도: {exc}'
                 )
-                import asyncio as _asyncio
-                await _asyncio.sleep(config.AUDIO_WS_RECONNECT_DELAY_SEC)
+                await asyncio.sleep(config.AUDIO_WS_RECONNECT_DELAY_SEC)
+            else:
+                # 서버가 연결을 정상 종료한 경우(같은 로봇의 새 연결에 밀려남 등)에도 바로 재접속하지
+                # 않는다 — 안 그러면 예외 없이 끝난 루프가 지연 없이 즉시 다시 붙으려 든다.
+                if not self._ws_stop_event.is_set():
+                    await asyncio.sleep(config.AUDIO_WS_RECONNECT_DELAY_SEC)
 
     def destroy_node(self):
         self._stop_ws_receiver()
