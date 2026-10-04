@@ -1,9 +1,9 @@
 import asyncio
+import logging
 
-import bcrypt
 from fastapi import FastAPI, HTTPException
 
-from .core import db
+from .core import db, passwords
 from .core.accounts import router as accounts_router
 from .api.v1 import call as call_api
 from .api.v1 import emergency_report as emergency_report_api
@@ -22,6 +22,9 @@ from .schemas import LoginRequest, LoginResponse
 from .services.mqtt_listener import start_mqtt_listener
 from .services.scheduler import run_scheduler_loop
 from .ws import audio_relay, dashboard_ws, robot_ws
+
+# 서버 전역 로그 형식. 이전엔 로거가 하나도 없어 삼켜진 예외의 흔적이 남지 않았다.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="CareGuard Server")
 app.include_router(media_router)
@@ -91,7 +94,7 @@ def login(payload: LoginRequest):
             not user
             or not user["is_active"]
             or not user["role_is_active"]
-            or not bcrypt.checkpw(payload.password.encode(), user["password_hash"].encode())
+            or not passwords.verify_password(payload.password, user["password_hash"])
         ):
             raise HTTPException(status_code=401, detail=INVALID_CREDENTIALS)
 

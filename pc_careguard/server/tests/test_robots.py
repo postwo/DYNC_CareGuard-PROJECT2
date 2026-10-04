@@ -1,5 +1,7 @@
 import uuid
 
+import pytest
+
 from app.core import db
 from app.api.v1.robots import _map_recipient_label
 
@@ -290,3 +292,26 @@ def test_get_robot_thresholds_unknown_robot_returns_404(client):
 def test_set_robot_thresholds_unknown_robot_returns_404(client):
     response = client.put("/robots/999999999/thresholds", json={})
     assert response.status_code == 404
+
+
+# ---- 입력 한계(예전엔 DB 오류가 처리 안 된 채 500으로 터지거나 빈 코드가 그대로 등록됐다) -----------
+
+@pytest.mark.parametrize("body", [
+    {"code": "", "name": "이름"},
+    {"code": "R-" + "9" * 20, "name": "이름"},
+    {"code": "R-OK", "name": ""},
+    {"code": "R-OK", "name": "n" * 65},
+    {"code": "R-OK", "name": "이름", "model": ""},
+    {"code": "R-OK", "name": "이름", "model": "m" * 65},
+])
+def test_register_robot_rejects_out_of_range_fields(client, body):
+    assert client.post("/robots", json=body).status_code == 422
+
+
+def test_update_robot_rejects_empty_or_too_long_name(client, cleanup_robot):
+    code = f"TEST-{uuid.uuid4().hex[:8]}"
+    cleanup_robot.append(code)
+    robot_id = client.post("/robots", json={"code": code, "name": "원래 이름"}).json()["id"]
+    assert client.put(f"/robots/{robot_id}", json={"name": ""}).status_code == 422
+    assert client.put(f"/robots/{robot_id}", json={"name": "n" * 65}).status_code == 422
+    assert client.put(f"/robots/{robot_id}", json={"name": "새 이름"}).status_code == 200

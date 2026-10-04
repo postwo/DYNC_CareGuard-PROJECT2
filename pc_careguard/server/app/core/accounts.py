@@ -1,11 +1,10 @@
 from collections import defaultdict
 
-import bcrypt
 import psycopg2
 from fastapi import APIRouter, HTTPException
 from typing import List
 
-from . import db
+from . import db, passwords
 from ..schemas import (
     AccountItem,
     AssignRecipientsRequest,
@@ -21,6 +20,7 @@ from ..ws import dashboard_ws
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 PASSWORD_POLICY_ERROR = "비밀번호는 8자 이상이며 영문과 숫자를 모두 포함해야 합니다"
+PASSWORD_TOO_LONG_ERROR = "비밀번호가 너무 깁니다 (최대 %d바이트, 영문 기준 %d자)" % (passwords.MAX_PASSWORD_BYTES, passwords.MAX_PASSWORD_BYTES)
 
 
 def _check_password_policy(password: str) -> None:
@@ -32,6 +32,9 @@ def _check_password_policy(password: str) -> None:
     has_digit = any(c.isdigit() for c in password)
     if len(password) < 8 or not has_letter or not has_digit:
         raise HTTPException(status_code=400, detail=PASSWORD_POLICY_ERROR)
+    # bcrypt는 72바이트를 넘는 비밀번호를 받지 않는다 — 해시 단계에서 500이 나기 전에 막는다.
+    if not passwords.is_within_limit(password):
+        raise HTTPException(status_code=400, detail=PASSWORD_TOO_LONG_ERROR)
 
 LIST_QUERY = """
     SELECT u.id, u.login_id, u.display_name, u.is_active, u.last_login_at,
@@ -140,7 +143,7 @@ def register_account(payload: RegisterAccountRequest):
         if role is None:
             raise HTTPException(status_code=400, detail="알 수 없는 역할입니다")
 
-        password_hash = bcrypt.hashpw(payload.password.encode(), bcrypt.gensalt()).decode()
+        password_hash = passwords.hash_password(payload.password)
 
         try:
             cur.execute(
@@ -240,7 +243,7 @@ def update_account(user_id: int, payload: UpdateAccountRequest):
 def change_password(user_id: int, payload: ChangePasswordRequest):
     """계정 수정 모달의 "변경" 버튼이 호출하는 엔드포인트. 새 비밀번호를 해시해 저장한다."""
     _check_password_policy(payload.new_password)
-    password_hash = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    password_hash = passwords.hash_password(payload.new_password)
     with db.get_connection() as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE careguard_user SET password_hash = %s WHERE id = %s AND deleted_at IS NULL",

@@ -27,9 +27,10 @@ class AccountItem(BaseModel):
 
 
 class RegisterAccountRequest(BaseModel):
-    login_id: str
+    # careguard_user.login_id / display_name은 VARCHAR(64) — 넘으면 DB 오류가 처리 안 된 채 500이 된다.
+    login_id: str = Field(min_length=1, max_length=64)
     password: str
-    display_name: str
+    display_name: str = Field(min_length=1, max_length=64)
     role_code: str  # admin / operator / guardian
     is_active: bool = True
 
@@ -39,7 +40,7 @@ class RegisterAccountResponse(AccountItem):
 
 
 class UpdateAccountRequest(BaseModel):
-    display_name: str
+    display_name: str = Field(min_length=1, max_length=64)
     role_code: str  # admin / operator / guardian
     is_active: bool
 
@@ -433,9 +434,9 @@ class RegisterRobotRequest(BaseModel):
     # DB 제약(robot.code VARCHAR(16), robot.ros_domain_id CHECK 0~232)과 동일한 범위를
     # 여기서도 검증한다 — 안 그러면 DB 제약 위반이 그대로 처리 안 된 예외로 터져 500이
     # 되고, 클라이언트는 "서버에 연결할 수 없습니다" 같은 엉뚱한 메시지를 보게 된다.
-    code: str = Field(max_length=16)
-    name: str
-    model: str = "limo"
+    code: str = Field(min_length=1, max_length=16)
+    name: str = Field(min_length=1, max_length=64)  # robot.name VARCHAR(64)
+    model: str = Field(default="limo", min_length=1, max_length=64)  # robot.model VARCHAR(64)
     ros_domain_id: Optional[int] = Field(default=None, ge=0, le=232)
     ip: Optional[str] = Field(default=None, max_length=45)
 
@@ -448,8 +449,8 @@ class RobotUpdate(BaseModel):
     # 로봇 수정 다이얼로그의 "저장" — code(연결 식별자)는 여기 없다. RobotDialog가 Edit
     # 모드에서 코드 입력칸을 읽기 전용으로 잠가두는 것과 같은 이유(바꾸려면 등록 해제 후
     # 재등록해야 WebSocket 접속의 robot_code와 어긋나지 않는다).
-    name: Optional[str] = None
-    model: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    model: Optional[str] = Field(default=None, min_length=1, max_length=64)
     ros_domain_id: Optional[int] = Field(default=None, ge=0, le=232)
     ip: Optional[str] = Field(default=None, max_length=45)
 
