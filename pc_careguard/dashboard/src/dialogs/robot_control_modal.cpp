@@ -456,6 +456,11 @@ void RobotControlModal::loadChargeWaypoint() {
     // 백그라운드로 미리 가져와두고, 버튼을 누른 시점엔 이미 준비돼 있게 한다.
     apiClient_->fetchActiveMaps([this](bool ok, const QVector<ApiClient::MapInfo>& maps) {
         if (!ok) return;
+        // 맵이 바뀌었을 수 있으니 이전에 알던 맵·충전 좌표는 버리고 다시 확정한다. 안 그러면 새 맵에
+        // 충전 스테이션이 없을 때 옛 맵의 좌표가 남아, 새 mapId와 짝이 안 맞는 좌표로 로봇을 보내게 된다.
+        mapId_ = 0;
+        chargeWaypointLoaded_ = false;
+        chargeWaypointMissing_ = false;
         ApiClient::MapInfo matched;
         for (const auto& map : maps) {
             if (map.robotCode != data_.robotCode) continue;
@@ -485,9 +490,10 @@ void RobotControlModal::loadChargeWaypoint() {
                 if (wp.kind == QStringLiteral("charge")) {
                     chargeWaypoint_ = wp;
                     chargeWaypointLoaded_ = true;
-                    break;
+                    return;
                 }
             }
+            chargeWaypointMissing_ = true;
         });
     });
 }
@@ -584,7 +590,9 @@ void RobotControlModal::tickCountdown() {
 void RobotControlModal::sendReturnToCharge() {
     if (!chargeWaypointLoaded_) {
         QMessageBox::warning(this, QStringLiteral("충전소 복귀 실패"),
-                              QStringLiteral("이 로봇의 충전 스테이션 좌표를 아직 못 불러왔습니다."));
+                              chargeWaypointMissing_
+                                  ? QStringLiteral("이 로봇의 맵에 충전 스테이션 웨이포인트가 등록돼 있지 않습니다.")
+                                  : QStringLiteral("이 로봇의 충전 스테이션 좌표를 아직 못 불러왔습니다."));
         resetCancelButton();
         return;
     }

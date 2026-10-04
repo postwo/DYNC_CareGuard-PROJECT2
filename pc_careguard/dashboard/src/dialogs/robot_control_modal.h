@@ -85,6 +85,8 @@ private:
 
     int mapId_ = 0;
     bool chargeWaypointLoaded_ = false;
+    // 맵과 웨이포인트 조회까지 끝났는데 충전 스테이션이 없는 경우 — "아직 못 불러왔다"와 구분해 안내한다.
+    bool chargeWaypointMissing_ = false;
     ApiClient::WaypointInfo chargeWaypoint_;
 
     QTimer* countdownTimer_ = nullptr;

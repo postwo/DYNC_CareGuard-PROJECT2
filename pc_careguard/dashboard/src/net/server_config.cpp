@@ -41,13 +41,25 @@ QString readFromEnvFile() {
 
 }  // namespace
 
+QString normalizeServerUrl(const QString& raw) {
+    QString url = raw.trimmed();
+    // .env에서 흔한 실수: 값을 따옴표로 감싼다 — 그대로 두면 URL이 "\"http://...\""가 돼 모든 요청이 실패한다.
+    if (url.size() >= 2 && ((url.startsWith(QLatin1Char('"')) && url.endsWith(QLatin1Char('"'))) ||
+                            (url.startsWith(QLatin1Char('\'')) && url.endsWith(QLatin1Char('\''))))) {
+        url = url.mid(1, url.size() - 2).trimmed();
+    }
+    // 끝의 "/"는 호출부가 "/robots"를 이어 붙일 때 "//robots"가 돼 404가 난다.
+    while (url.endsWith(QLatin1Char('/'))) url.chop(1);
+    return url;
+}
+
 QString resolveServerUrl() {
-    const QString fromEnv =
-        QProcessEnvironment::systemEnvironment().value(QLatin1String(kKey));
+    const QString fromEnv = normalizeServerUrl(
+        QProcessEnvironment::systemEnvironment().value(QLatin1String(kKey)));
     if (!fromEnv.isEmpty()) {
         return fromEnv;
     }
-    const QString fromFile = readFromEnvFile();
+    const QString fromFile = normalizeServerUrl(readFromEnvFile());
     if (!fromFile.isEmpty()) {
         return fromFile;
     }

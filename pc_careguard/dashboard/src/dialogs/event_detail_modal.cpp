@@ -93,6 +93,14 @@ EventDetailModal::EventDetailModal(const EventTableModel::EventRow& row, bool re
         resetSpeakerCallButton();
         markActionTaken(QStringLiteral("(스피커)"));
     });
+    // 오디오를 시작하지 못했을 때(마이크 없음, 서버 소켓 연결 실패 등): 버튼을 되돌리고, 이미 열린
+    // 서버 쪽 통화도 닫아 로봇의 스피커/마이크가 켜진 채 남지 않게 한 뒤 사유를 보여준다.
+    connect(callAudio_, &CallAudioClient::audioFailed, this, [this](const QString& reason) {
+        callActive_ = false;
+        resetSpeakerCallButton();
+        apiClient_->endCall(row_.robotId, [](bool, bool, const QString&) {});
+        QMessageBox::warning(this, QStringLiteral("통화 오디오 오류"), reason);
+    });
     // 통화 중에 모달을 닫아도(X 버튼 등) 통화가 계속 열려있으면 안 된다 — 로봇 쪽
     // 스피커/마이크가 계속 켜진 채로 남는 것을 막는다.
     connect(this, &QDialog::finished, this, [this](int) {

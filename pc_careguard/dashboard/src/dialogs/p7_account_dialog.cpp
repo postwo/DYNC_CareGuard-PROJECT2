@@ -90,6 +90,7 @@ AccountDialog::AccountDialog(Mode mode, const AccountData& data, const QStringLi
         label->setProperty("role", "label");
         col->addWidget(label);
         loginIdEdit_ = new QLineEdit(this);
+        loginIdEdit_->setMaxLength(64);  // careguard_user.login_id VARCHAR(64)
         loginIdEdit_->setFont(QFont(Tokens::Font::MONO));
         if (isEdit) {
             loginIdEdit_->setReadOnly(true);
@@ -123,6 +124,7 @@ AccountDialog::AccountDialog(Mode mode, const AccountData& data, const QStringLi
         label->setProperty("role", "label");
         col->addWidget(label);
         nameEdit_ = new QLineEdit(data.displayName, this);
+        nameEdit_->setMaxLength(64);  // careguard_user.display_name VARCHAR(64)
         nameEdit_->setPlaceholderText(QStringLiteral("예) 홍길동"));
         col->addWidget(nameEdit_);
         body->addLayout(col);
@@ -139,6 +141,7 @@ AccountDialog::AccountDialog(Mode mode, const AccountData& data, const QStringLi
             label->setProperty("role", "label");
             col->addWidget(label);
             passwordEdit_ = new IconLineEdit(this);
+            passwordEdit_->setMaxLength(72);  // bcrypt 한계(72바이트)보다 긴 비밀번호는 서버가 거부한다
             passwordEdit_->setEchoMode(QLineEdit::Password);
             passwordEdit_->setTrailingIcon(SimpleIcons::eye(Tokens::TEXT_MUTED, 14));
             connect(passwordEdit_, &IconLineEdit::trailingIconClicked, this,
@@ -153,6 +156,7 @@ AccountDialog::AccountDialog(Mode mode, const AccountData& data, const QStringLi
             label->setProperty("role", "label");
             col->addWidget(label);
             passwordConfirmEdit_ = new IconLineEdit(this);
+            passwordConfirmEdit_->setMaxLength(72);
             passwordConfirmEdit_->setEchoMode(QLineEdit::Password);
             passwordConfirmEdit_->setTrailingIcon(SimpleIcons::eye(Tokens::TEXT_MUTED, 14));
             connect(passwordConfirmEdit_, &IconLineEdit::trailingIconClicked, this,
@@ -207,6 +211,7 @@ AccountDialog::AccountDialog(Mode mode, const AccountData& data, const QStringLi
         auto* newPwRow = new QHBoxLayout();
         newPwRow->setSpacing(8);
         passwordEdit_ = new IconLineEdit(this);
+        passwordEdit_->setMaxLength(72);  // bcrypt 한계(72바이트)보다 긴 비밀번호는 서버가 거부한다
         passwordEdit_->setEchoMode(QLineEdit::Password);
         passwordEdit_->setTrailingIcon(SimpleIcons::eye(Tokens::TEXT_MUTED, 14));
         connect(passwordEdit_, &IconLineEdit::trailingIconClicked, this,
@@ -222,6 +227,7 @@ AccountDialog::AccountDialog(Mode mode, const AccountData& data, const QStringLi
         auto* confirmRow = new QHBoxLayout();
         confirmRow->setSpacing(8);
         passwordConfirmEdit_ = new IconLineEdit(this);
+        passwordConfirmEdit_->setMaxLength(72);
         passwordConfirmEdit_->setEchoMode(QLineEdit::Password);
         passwordConfirmEdit_->setTrailingIcon(SimpleIcons::eye(Tokens::TEXT_MUTED, 14));
         connect(passwordConfirmEdit_, &IconLineEdit::trailingIconClicked, this,
@@ -702,7 +708,9 @@ void AccountDialog::handleSaveClicked() {
         const QWidget* cell = recipientTable_->cellWidget(r, 0);
         const auto* checkbox = (cell != nullptr) ? cell->findChild<QCheckBox*>() : nullptr;
         if (checkbox != nullptr && checkbox->isChecked()) {
-            matchedRecipientIds.append(recipientTable_->item(r, 1)->data(Qt::UserRole).toInt());
+            // 이름 칸 아이템이 없는 행(생성 중 오류 등)은 건너뛴다 — 널 포인터를 그대로 역참조하지 않는다.
+            const QTableWidgetItem* nameItem = recipientTable_->item(r, 1);
+            if (nameItem != nullptr) matchedRecipientIds.append(nameItem->data(Qt::UserRole).toInt());
         }
     }
 

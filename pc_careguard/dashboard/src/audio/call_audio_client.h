@@ -50,10 +50,20 @@ signals:
     // 오디오 소켓 중 하나라도 연결이 끊기면 emit — 모달이 이걸 보고 "통화 종료"
     // 버튼을 눌린 것처럼 되돌릴 수 있다. 정상적인 stop() 호출 시에는 emit하지 않는다.
     void audioDisconnected();
+    // 통화 오디오를 아예 시작하지 못했거나(마이크·스피커 없음, 코덱 생성 실패) 서버 소켓에 연결하지
+    // 못했을 때 emit — 사유를 사용자에게 보여주고 서버에 열린 통화를 닫는 데 쓴다. start()를 부른
+    // 호출 안이 아니라 이벤트 루프를 한 번 돈 뒤에 emit된다(호출부가 start() 직후 하는 화면 갱신에
+    // 덮이지 않게). 이 경우 audioDisconnected는 emit하지 않는다.
+    void audioFailed(const QString& reason);
 
 private:
-    void setupMicCapture();
-    void setupSpeakerPlayback();
+    // 각 단계는 실패하면 false를 돌려주고 reason에 사유를 채운다. 실패를 조용히 넘기면 소리가 안
+    // 나는 통화를 "통화 중"으로 보여주게 된다.
+    bool createCodecs(QString* reason);
+    bool setupMicCapture(QString* reason);
+    bool setupSpeakerPlayback(QString* reason);
+    void openSockets(const QString& serverUrl, const QString& robotCode);
+    void fail(const QString& reason);
     void teardown();
 
     void onMicDataReady();
@@ -74,5 +84,6 @@ private:
     OpusEncoder* encoder_ = nullptr;
     OpusDecoder* decoder_ = nullptr;
 
+    bool encodeErrorLogged_ = false;  // 인코딩 오류는 첫 한 번만 기록한다(20ms마다 반복되면 로그가 넘친다)
     QByteArray micPcmBuffer_;  // 마이크에서 들어온 바이트를 20ms(640바이트) 단위로 자르기 전 임시 버퍼
 };

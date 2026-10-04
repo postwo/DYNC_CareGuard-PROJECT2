@@ -79,6 +79,8 @@ add_executable(careguard_dashboard
     src/widgets/careguard_combo_box.cpp
     src/widgets/checkable_list_widget.h
     src/widgets/checkable_list_widget.cpp
+    src/widgets/table_cells.h
+    src/widgets/table_cells.cpp
     src/dialogs/event_detail_modal.h
     src/dialogs/event_detail_modal.cpp
     src/dialogs/guardian_mail_dialog.h
@@ -99,6 +101,14 @@ add_executable(careguard_dashboard
     src/dialogs/p3_recipient_create_dialog.cpp
     src/pages/p1_overview_page.h
     src/pages/p1_overview_page.cpp
+    src/pages/p1/p1_overview_model.h
+    src/pages/p1/p1_overview_model.cpp
+    src/pages/p1/p1_kpi_row.h
+    src/pages/p1/p1_kpi_row.cpp
+    src/pages/p1/p1_robot_table.h
+    src/pages/p1/p1_robot_table.cpp
+    src/pages/p1/p1_alert_feed.h
+    src/pages/p1/p1_alert_feed.cpp
     src/pages/p2_event_page.h
     src/pages/p2_event_page.cpp
     src/pages/p3_recipient_page.h
@@ -111,8 +121,24 @@ add_executable(careguard_dashboard
     src/pages/p6_patrol_page.cpp
     src/pages/p7_settings_page.h
     src/pages/p7_settings_page.cpp
+    src/pages/p7/p7_api.h
+    src/pages/p7/p7_api.cpp
+    src/pages/p7/p7_common.h
+    src/pages/p7/p7_common.cpp
+    src/pages/p7/p7_recipient_directory.h
+    src/pages/p7/p7_recipient_directory.cpp
+    src/pages/p7/p7_robot_tab.h
+    src/pages/p7/p7_robot_tab.cpp
+    src/pages/p7/p7_account_rules.h
+    src/pages/p7/p7_account_rules.cpp
+    src/pages/p7/p7_account_tab.h
+    src/pages/p7/p7_account_tab.cpp
+    src/pages/p7/p7_threshold_tab.h
+    src/pages/p7/p7_threshold_tab.cpp
     src/pages/p8_logs_page.h
     src/pages/p8_logs_page.cpp
+    src/pages/p8/p8_log_tab.h
+    src/pages/p8/p8_log_tab.cpp
     resources/resources.qrc
 )
 
@@ -130,3 +156,10 @@ target_compile_definitions(careguard_dashboard PRIVATE
     CAREGUARD_SERVER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../server"
     CAREGUARD_MAPS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../robot_careguard_ws/src/careguard_bringup/maps"
     CAREGUARD_DASHBOARD_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+# 단위 시험(선택). 켜는 방법은 tests/CMakeLists.txt 맨 위 참고.
+option(CAREGUARD_BUILD_TESTS "화면 없이 도는 QtTest 단위 시험을 함께 빌드한다" OFF)
+if(CAREGUARD_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

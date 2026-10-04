@@ -16,4 +16,7 @@ namespace ServerConfig {
 // 안 날아가야 하기 때문) 기준이고, CAREGUARD_DASHBOARD_DIR 환경변수로도 재정의 가능하다.
 QString resolveServerUrl();
 
+// 값 앞뒤 공백·감싼 따옴표·끝의 "/"를 정리한다(.env에서 흔한 실수). 빈 값은 빈 문자열 그대로.
+QString normalizeServerUrl(const QString& raw);
+
 }  // namespace ServerConfig

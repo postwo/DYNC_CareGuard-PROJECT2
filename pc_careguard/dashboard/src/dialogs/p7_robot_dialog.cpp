@@ -10,6 +10,8 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
 #include <QStyle>
 #include <QVBoxLayout>
 
@@ -55,6 +57,7 @@ RobotDialog::RobotDialog(Mode mode, const RobotData& data, const QVector<Recipie
         label->setProperty("role", "label");
         col->addWidget(label);
         codeEdit_ = new QLineEdit(data.code, this);
+        codeEdit_->setMaxLength(16);  // robot.code VARCHAR(16) — 서버가 같은 한도로 거부한다
         codeEdit_->setFont(QFont(Tokens::Font::MONO));
         if (isEdit) {
             codeEdit_->setReadOnly(true);
@@ -78,6 +81,7 @@ RobotDialog::RobotDialog(Mode mode, const RobotData& data, const QVector<Recipie
         label->setProperty("role", "label");
         col->addWidget(label);
         nameEdit_ = new QLineEdit(data.name, this);
+        nameEdit_->setMaxLength(64);  // robot.name VARCHAR(64)
         if (!isEdit) nameEdit_->setPlaceholderText(QStringLiteral("예) 5호기"));
         col->addWidget(nameEdit_);
         body->addLayout(col);
@@ -101,6 +105,8 @@ RobotDialog::RobotDialog(Mode mode, const RobotData& data, const QVector<Recipie
         label->setProperty("role", "label");
         col->addWidget(label);
         rosDomainEdit_ = new QLineEdit(QString::number(data.rosDomainId), this);
+        rosDomainEdit_->setMaxLength(3);
+        rosDomainEdit_->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("[0-9]{0,3}")), rosDomainEdit_));
         rosDomainEdit_->setFont(QFont(Tokens::Font::MONO));
         col->addWidget(rosDomainEdit_);
         if (!isEdit) {
@@ -118,6 +124,7 @@ RobotDialog::RobotDialog(Mode mode, const RobotData& data, const QVector<Recipie
         label->setProperty("role", "label");
         col->addWidget(label);
         ipEdit_ = new QLineEdit(data.ip, this);
+        ipEdit_->setMaxLength(45);  // robot.ip VARCHAR(45) — IPv6 최대 길이
         ipEdit_->setFont(QFont(Tokens::Font::MONO));
         ipEdit_->setPlaceholderText(QStringLiteral("예) 192.168.0.9"));
         col->addWidget(ipEdit_);
@@ -344,8 +351,18 @@ void RobotDialog::handleSaveClicked() {
     nameEdit_->style()->unpolish(nameEdit_);
     nameEdit_->style()->polish(nameEdit_);
 
-    // Don't proceed if any required field is empty
-    if (codeIsEmpty || nameIsEmpty) {
+    // ROS 도메인 ID는 0~232(서버·DB 제약과 같다). 예전엔 toInt()가 잘못된 입력에 조용히 0을 돌려줘서
+    // 오타가 곧바로 "도메인 0"으로 저장됐다. 빈 칸은 기본값 0으로 본다.
+    const QString domainText = rosDomainEdit_->text().trimmed();
+    bool domainOk = true;
+    const int domainId = domainText.isEmpty() ? 0 : domainText.toInt(&domainOk);
+    const bool domainInvalid = !domainOk || domainId < 0 || domainId > 232;
+    rosDomainEdit_->setProperty("state", domainInvalid ? QVariant("error") : QVariant());
+    rosDomainEdit_->style()->unpolish(rosDomainEdit_);
+    rosDomainEdit_->style()->polish(rosDomainEdit_);
+
+    // Don't proceed if any required field is empty or invalid
+    if (codeIsEmpty || nameIsEmpty || domainInvalid) {
         return;
     }
 
@@ -353,7 +370,7 @@ void RobotDialog::handleSaveClicked() {
     result.code = code;
     result.name = name;
     result.model = modelCombo_->currentText();
-    result.rosDomainId = rosDomainEdit_->text().trimmed().toInt();
+    result.rosDomainId = domainId;
     result.ip = ipEdit_->text().trimmed();
     result.recipientLabel = QStringLiteral("미배정");
     for (int i = 0; i < recipientListWidget_->count(); ++i) {
