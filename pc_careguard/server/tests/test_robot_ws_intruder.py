@@ -3,6 +3,7 @@ import uuid
 
 from app.api.v1.media import resolve_storage_path
 from app.core import db
+from tests.util import wait_until
 
 
 def _unique_code():
@@ -21,6 +22,13 @@ def _care_events_for(robot_id):
         return cur.fetchall()
 
 
+def _capture_file_id(robot_id):
+    with db.get_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT evidence FROM care_event WHERE robot_id = %s", (robot_id,))
+        row = cur.fetchone()
+    return row and row["evidence"].get("capture_file_id")
+
+
 def _cleanup_care_events(robot_id):
     with db.get_connection() as conn, conn.cursor() as cur:
         cur.execute("DELETE FROM care_event WHERE robot_id = %s", (robot_id,))
@@ -30,7 +38,7 @@ def _cleanup_care_events(robot_id):
 def test_intruder_detected_creates_care_event(client, cleanup_robot):
     """patrol_intruder_watch_node.py가 보내는 것과 같은 모양의 메시지를 WS로 보내면
     care_event(INTRUDER)가 생성돼야 한다 — recipient_id는 아무도 매치 안 됐다는 뜻이라
-    NULL이 맞다(robot_ws.py::_handle_intruder_detected 참고)."""
+    NULL이 맞다(services/intruder.py::IntruderReporter 참고)."""
     code = _unique_code()
     cleanup_robot.append(code)
     robot_id = client.post("/robots", json={"code": code, "name": "침입자 감지 테스트"}).json()["id"]
@@ -45,6 +53,7 @@ def test_intruder_detected_creates_care_event(client, cleanup_robot):
                 "nearest_dist": 0.71,
                 "run_id": 1,
             })
+            wait_until(lambda: _care_events_for(robot_id))
 
         events = _care_events_for(robot_id)
         assert len(events) == 1
@@ -76,6 +85,7 @@ def test_intruder_detected_with_image_creates_capture_file(client, cleanup_robot
                 "run_id": 1,
                 "image_base64": fake_jpeg,
             })
+            wait_until(lambda: _capture_file_id(robot_id))
 
         with db.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
@@ -109,7 +119,7 @@ def test_intruder_detected_with_image_creates_capture_file(client, cleanup_robot
 
 def test_intruder_detected_uses_running_patrol_run(client, cleanup_robot):
     """이 로봇에 status='running'인 patrol_run이 있으면 care_event.patrol_run_id가
-    그 회차로 채워져야 한다(robot_ws.py::_handle_intruder_detected)."""
+    그 회차로 채워져야 한다(services/intruder.py::IntruderReporter)."""
     code = _unique_code()
     cleanup_robot.append(code)
     robot_id = client.post("/robots", json={"code": code, "name": "침입자+순찰 연동 테스트"}).json()["id"]
@@ -126,6 +136,7 @@ def test_intruder_detected_uses_running_patrol_run(client, cleanup_robot):
     try:
         with client.websocket_connect(f"/ws/robot?robot_code={code}") as ws:
             ws.send_json({"type": "intruder_detected", "track_id": 1})
+            wait_until(lambda: _care_events_for(robot_id))
 
         with db.get_connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT patrol_run_id FROM care_event WHERE robot_id = %s", (robot_id,))

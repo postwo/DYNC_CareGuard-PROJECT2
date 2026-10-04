@@ -1,7 +1,12 @@
 import asyncio
+import logging
 from typing import Optional, Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from ..core.errors import SOCKET_SEND_ERRORS
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -58,12 +63,13 @@ async def dashboard_ws_endpoint(websocket: WebSocket):
 
 
 async def broadcast(message: dict) -> None:
-    """연결된 모든 대시보드에 메시지를 보낸다. 끊긴 소켓은 조용히 제거한다."""
+    """연결된 모든 대시보드에 메시지를 보낸다. 끊긴 소켓은 제거한다(전송 오류만 "끊김"으로 본다)."""
     dead = []
     for ws in list(_connections):
         try:
             await ws.send_json(message)
-        except Exception:
+        except SOCKET_SEND_ERRORS as exc:
+            logger.info("끊긴 대시보드 소켓 제거: %s", exc)
             dead.append(ws)
     for ws in dead:
         _connections.discard(ws)
@@ -78,4 +84,8 @@ def broadcast_threadsafe(message: dict) -> None:
     """
     if _event_loop is None:
         return
-    asyncio.run_coroutine_threadsafe(broadcast(message), _event_loop)
+    try:
+        asyncio.run_coroutine_threadsafe(broadcast(message), _event_loop)
+    except RuntimeError:
+        # 서버 종료 중이라 루프가 이미 닫힌 경우 — 알림 하나 못 보낸다고 이미 커밋된 요청을 실패시키지 않는다.
+        logger.warning("대시보드 알림을 보내지 못했습니다(이벤트 루프 종료): %s", message.get("type"))

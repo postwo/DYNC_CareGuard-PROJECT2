@@ -3,15 +3,25 @@ import uuid
 
 from app.api.v1.media import resolve_storage_path
 from app.core import db
+from tests.util import settle, wait_until
 
 
 def _unique_code():
     return f"TEST-{uuid.uuid4().hex[:8]}"
 
 
+def _recognition_file(recipient_id):
+    with db.get_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM files WHERE entity_type = 'recipient_recognition_capture' AND entity_id = %s",
+            (recipient_id,),
+        )
+        return cur.fetchone()
+
+
 def test_person_recognized_saves_capture_without_care_event(client, cleanup_robot):
     """person_recognized WS 메시지는 files(entity_type='recipient_recognition_capture')만
-    만들고 care_event는 절대 만들지 않아야 한다(robot_ws.py::_handle_person_recognized —
+    만들고 care_event는 절대 만들지 않아야 한다(services/intruder.py::RecognitionCapture —
     알림이 아니라 인식 기록이라서 intruder_detected와 다르게 처리됨)."""
     code = _unique_code()
     cleanup_robot.append(code)
@@ -30,6 +40,7 @@ def test_person_recognized_saves_capture_without_care_event(client, cleanup_robo
                 "run_id": 1,
                 "image_base64": fake_jpeg,
             })
+            wait_until(lambda: _recognition_file("999999"))
 
         with db.get_connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) AS n FROM care_event WHERE robot_id = %s", (robot_id,))
@@ -63,6 +74,7 @@ def test_person_recognized_without_image_does_nothing(client, cleanup_robot):
 
     with client.websocket_connect(f"/ws/robot?robot_code={code}") as ws:
         ws.send_json({"type": "person_recognized", "track_id": 1, "recipient_id": 999998})
+        settle()
 
     with db.get_connection() as conn, conn.cursor() as cur:
         cur.execute(

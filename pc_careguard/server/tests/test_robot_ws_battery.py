@@ -1,7 +1,8 @@
 import uuid
 
 from app.core import db
-from app.ws import robot_ws
+from tests.util import settle, wait_until
+from app.services.battery import battery_monitor
 
 
 def _unique_code():
@@ -43,6 +44,7 @@ def test_battery_below_attention_creates_warn_event(client, cleanup_robot):
     try:
         with client.websocket_connect(f"/ws/robot?robot_code={code}") as ws:
             ws.send_json({"type": "battery_state", "percentage": 25})
+            wait_until(lambda: _system_events_for(robot_id))
 
         events = _system_events_for(robot_id)
         assert len(events) == 1
@@ -50,7 +52,7 @@ def test_battery_below_attention_creates_warn_event(client, cleanup_robot):
         assert events[0]["severity"] == "warn"
     finally:
         _cleanup_system_events(robot_id)
-        robot_ws._battery_alert_state.pop(code, None)
+        battery_monitor.reset(code)
 
 
 def test_battery_below_return_creates_error_event(client, cleanup_robot):
@@ -62,6 +64,7 @@ def test_battery_below_return_creates_error_event(client, cleanup_robot):
     try:
         with client.websocket_connect(f"/ws/robot?robot_code={code}") as ws:
             ws.send_json({"type": "battery_state", "percentage": 10})
+            wait_until(lambda: _system_events_for(robot_id))
 
         events = _system_events_for(robot_id)
         assert len(events) == 1
@@ -69,7 +72,7 @@ def test_battery_below_return_creates_error_event(client, cleanup_robot):
         assert events[0]["severity"] == "error"
     finally:
         _cleanup_system_events(robot_id)
-        robot_ws._battery_alert_state.pop(code, None)
+        battery_monitor.reset(code)
 
 
 def test_battery_state_does_not_repeat_same_alert(client, cleanup_robot):
@@ -83,12 +86,14 @@ def test_battery_state_does_not_repeat_same_alert(client, cleanup_robot):
             ws.send_json({"type": "battery_state", "percentage": 25})
             ws.send_json({"type": "battery_state", "percentage": 22})
             ws.send_json({"type": "battery_state", "percentage": 20})
+            wait_until(lambda: _system_events_for(robot_id))
+            settle()
 
         events = _system_events_for(robot_id)
         assert len(events) == 1
     finally:
         _cleanup_system_events(robot_id)
-        robot_ws._battery_alert_state.pop(code, None)
+        battery_monitor.reset(code)
 
 
 def test_battery_above_attention_does_not_create_event(client, cleanup_robot):
@@ -100,11 +105,12 @@ def test_battery_above_attention_does_not_create_event(client, cleanup_robot):
     try:
         with client.websocket_connect(f"/ws/robot?robot_code={code}") as ws:
             ws.send_json({"type": "battery_state", "percentage": 80})
+            settle()
 
         assert _system_events_for(robot_id) == []
     finally:
         _cleanup_system_events(robot_id)
-        robot_ws._battery_alert_state.pop(code, None)
+        battery_monitor.reset(code)
 
 
 def test_battery_return_needed_requires_recovery_margin(client, cleanup_robot):
@@ -118,16 +124,16 @@ def test_battery_return_needed_requires_recovery_margin(client, cleanup_robot):
     _set_battery_thresholds(client, robot_id, attention_pct=30, return_pct=28)
 
     try:
-        robot_ws._handle_battery_state(code, 27)
-        assert robot_ws._battery_alert_state[code] == "return_needed"
+        battery_monitor.check_thresholds(code, 27)
+        assert battery_monitor.alert_state(code) == "return_needed"
 
         # return_pct(28%)를 살짝 넘는 31%로 튀어도 여유분(+5%p=33%) 미만이라 복귀 필요 유지.
-        robot_ws._handle_battery_state(code, 31)
-        assert robot_ws._battery_alert_state[code] == "return_needed"
+        battery_monitor.check_thresholds(code, 31)
+        assert battery_monitor.alert_state(code) == "return_needed"
 
         # 다시 27%로 떨어져도 상태 변화 없음 — 위 두 호출 다 "새 이벤트 없음"이어야 한다.
-        robot_ws._handle_battery_state(code, 27)
-        assert robot_ws._battery_alert_state[code] == "return_needed"
+        battery_monitor.check_thresholds(code, 27)
+        assert battery_monitor.alert_state(code) == "return_needed"
 
         events = _system_events_for(robot_id)
         assert len(events) == 1
@@ -135,14 +141,14 @@ def test_battery_return_needed_requires_recovery_margin(client, cleanup_robot):
 
         # 여유분을 확실히 넘기면(34% > 28+5) 비로소 정상으로 복귀 — 다만 "정상 회복"
         # 로그는 더 이상 안 남긴다(2026-09-14 사용자 요청, 아래 covers 참고).
-        robot_ws._handle_battery_state(code, 34)
-        assert robot_ws._battery_alert_state[code] == "normal"
+        battery_monitor.check_thresholds(code, 34)
+        assert battery_monitor.alert_state(code) == "normal"
 
         events = _system_events_for(robot_id)
         assert len(events) == 1
     finally:
         _cleanup_system_events(robot_id)
-        robot_ws._battery_alert_state.pop(code, None)
+        battery_monitor.reset(code)
 
 
 def test_battery_recovered_event_is_not_logged(client, cleanup_robot):
@@ -156,17 +162,17 @@ def test_battery_recovered_event_is_not_logged(client, cleanup_robot):
     _set_battery_thresholds(client, robot_id, attention_pct=30, return_pct=15)
 
     try:
-        robot_ws._handle_battery_state(code, 25)
-        assert robot_ws._battery_alert_state[code] == "attention"
+        battery_monitor.check_thresholds(code, 25)
+        assert battery_monitor.alert_state(code) == "attention"
         assert len(_system_events_for(robot_id)) == 1
 
-        robot_ws._handle_battery_state(code, 80)
-        assert robot_ws._battery_alert_state[code] == "normal"
+        battery_monitor.check_thresholds(code, 80)
+        assert battery_monitor.alert_state(code) == "normal"
         # 상태는 normal로 바뀌었지만 system_event는 추가되지 않는다.
         assert len(_system_events_for(robot_id)) == 1
     finally:
         _cleanup_system_events(robot_id)
-        robot_ws._battery_alert_state.pop(code, None)
+        battery_monitor.reset(code)
 
 
 def test_battery_attention_requires_recovery_margin(client, cleanup_robot):
@@ -178,15 +184,15 @@ def test_battery_attention_requires_recovery_margin(client, cleanup_robot):
     _set_battery_thresholds(client, robot_id, attention_pct=30, return_pct=15)
 
     try:
-        robot_ws._handle_battery_state(code, 29)
-        assert robot_ws._battery_alert_state[code] == "attention"
+        battery_monitor.check_thresholds(code, 29)
+        assert battery_monitor.alert_state(code) == "attention"
 
         # attention_pct(30%)를 살짝 넘는 33%로 튀어도 여유분(+5%p=35%) 미만이라 주의 유지.
-        robot_ws._handle_battery_state(code, 33)
-        assert robot_ws._battery_alert_state[code] == "attention"
+        battery_monitor.check_thresholds(code, 33)
+        assert battery_monitor.alert_state(code) == "attention"
 
-        robot_ws._handle_battery_state(code, 29)
-        assert robot_ws._battery_alert_state[code] == "attention"
+        battery_monitor.check_thresholds(code, 29)
+        assert battery_monitor.alert_state(code) == "attention"
 
         events = _system_events_for(robot_id)
         assert len(events) == 1
@@ -194,11 +200,11 @@ def test_battery_attention_requires_recovery_margin(client, cleanup_robot):
 
         # 여유분을 확실히 넘기면(36% > 30+5) 비로소 정상으로 복귀 — "정상 회복" 로그는
         # 안 남긴다(test_battery_recovered_event_is_not_logged 참고).
-        robot_ws._handle_battery_state(code, 36)
-        assert robot_ws._battery_alert_state[code] == "normal"
+        battery_monitor.check_thresholds(code, 36)
+        assert battery_monitor.alert_state(code) == "normal"
 
         events = _system_events_for(robot_id)
         assert len(events) == 1
     finally:
         _cleanup_system_events(robot_id)
-        robot_ws._battery_alert_state.pop(code, None)
+        battery_monitor.reset(code)

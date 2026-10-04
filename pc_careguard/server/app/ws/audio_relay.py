@@ -11,21 +11,20 @@ robot_code 하나당 필요한 소켓들(로봇 마이크 발신 1개, 그걸 �
 것보다 어디서 뭘 만지는지 보기 쉽다.
 """
 import asyncio
+import logging
 from typing import Dict, Optional, Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ..core import db
+from ..core.errors import SOCKET_SEND_ERRORS
+from ..services.robot_registry import robot_exists
+
+logger = logging.getLogger(__name__)
+
+# 4001: 같은 로봇의 새 연결이 이 자리를 차지해 밀려났다는 뜻(재연결 시 옛 소켓 정리용).
+CLOSE_SUPERSEDED = 4001
 
 router = APIRouter()
-
-
-def _robot_exists(robot_code: str) -> bool:
-    # robot_ws.py::_robot_exists와 같은 패턴(media.py/map.py도 동일) — 등록된
-    # 로봇인지만 확인한다.
-    with db.get_connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM robot WHERE code = %s AND deregistered_at IS NULL", (robot_code,))
-        return cur.fetchone() is not None
 
 
 class AudioRoom:
@@ -56,8 +55,34 @@ class AudioRoom:
             return
         try:
             await self.downlink_receiver.send_bytes(data)
-        except Exception:
+        except SOCKET_SEND_ERRORS as exc:
+            logger.info("로봇 다운링크 소켓이 끊겨 정리한다: %s", exc)
             self.downlink_receiver = None
+
+    async def claim_uplink_sender(self, websocket: WebSocket) -> None:
+        await self._replace("uplink_sender", websocket)
+
+    async def claim_downlink_receiver(self, websocket: WebSocket) -> None:
+        await self._replace("downlink_receiver", websocket)
+
+    async def _replace(self, slot: str, websocket: WebSocket) -> None:
+        """로봇 쪽 소켓 자리를 새 연결로 바꾼다. 옛 소켓을 그냥 덮어쓰면 서버 쪽에 닫히지
+        않은 소켓이 남으므로, 밀려난 소켓은 명시적으로 닫는다."""
+        previous = getattr(self, slot)
+        setattr(self, slot, websocket)
+        if previous is not None and previous is not websocket:
+            try:
+                await previous.close(code=CLOSE_SUPERSEDED)
+            except SOCKET_SEND_ERRORS:
+                pass  # 이미 끊긴 소켓이면 닫을 것도 없다
+
+    def is_empty(self) -> bool:
+        return (
+            self.uplink_sender is None
+            and self.downlink_receiver is None
+            and not self.uplink_listeners
+            and not self.downlink_senders
+        )
 
     @staticmethod
     async def _fanout(targets: Set[WebSocket], data: bytes) -> None:
@@ -67,22 +92,28 @@ class AudioRoom:
         async def _send_one(ws: WebSocket) -> None:
             try:
                 await ws.send_bytes(data)
-            except Exception:
+            except SOCKET_SEND_ERRORS as exc:
+                logger.info("끊긴 오디오 청취 소켓 제거: %s", exc)
                 targets.discard(ws)
 
         await asyncio.gather(*(_send_one(ws) for ws in list(targets)))
 
 
 class AudioRoomRegistry:
-    """robot_code -> AudioRoom. 통화가 한 번도 없었던 로봇은 조회 시점에 새로
-    만든다 — 통화 시작/종료를 별도로 등록/해제하지 않고, 소켓이 다 빠지면 room이
-    비어있는 채로 남아도 메모리상 큰 문제가 없을 만큼 가볍다(세트 4개짜리 객체)."""
+    """robot_code -> AudioRoom. 통화가 한 번도 없었던 로봇은 조회 시점에 새로 만든다.
+    소켓이 모두 빠져 비어버린 room은 release()가 치워서 로봇 코드가 늘어도 메모리가 새지 않는다."""
 
     def __init__(self) -> None:
         self._rooms: Dict[str, AudioRoom] = {}
 
     def room(self, robot_code: str) -> AudioRoom:
         return self._rooms.setdefault(robot_code, AudioRoom())
+
+    def release(self, robot_code: str) -> None:
+        """소켓이 빠진 뒤 호출 — room이 완전히 비었으면 제거한다."""
+        room = self._rooms.get(robot_code)
+        if room is not None and room.is_empty():
+            del self._rooms[robot_code]
 
 
 _registry = AudioRoomRegistry()
@@ -91,13 +122,15 @@ _registry = AudioRoomRegistry()
 @router.websocket("/ws/robot/{robot_code}/audio/uplink")
 async def robot_audio_uplink(websocket: WebSocket, robot_code: str):
     """로봇이 마이크로 캡처한 Opus 프레임을 올려보내는 소켓."""
-    if not _robot_exists(robot_code):
+    if not await asyncio.to_thread(robot_exists, robot_code):
         await websocket.close(code=4404)
         return
 
-    room = _registry.room(robot_code)
     await websocket.accept()
-    room.uplink_sender = websocket
+    # accept 뒤에 room을 얻는다 — 그 사이 await가 끼면 다른 연결의 release()가 빈 room을
+    # 치워버려 이 소켓이 버려진 room에 등록되는 경합이 생긴다.
+    room = _registry.room(robot_code)
+    await room.claim_uplink_sender(websocket)
     try:
         while True:
             data = await websocket.receive_bytes()
@@ -107,14 +140,17 @@ async def robot_audio_uplink(websocket: WebSocket, robot_code: str):
     finally:
         if room.uplink_sender is websocket:
             room.uplink_sender = None
+        _registry.release(robot_code)
 
 
 @router.websocket("/ws/dashboard/{robot_code}/audio/uplink")
 async def dashboard_audio_uplink(websocket: WebSocket, robot_code: str):
     """대시보드가 로봇 마이크 소리를 듣는 소켓. 대시보드는 이 소켓으로 아무것도
     안 보낸다 — 연결 유지 목적의 수신 대기만 한다."""
-    room = _registry.room(robot_code)
     await websocket.accept()
+    # accept 뒤에 room을 얻는다 — 그 사이 await가 끼면 다른 연결의 release()가 빈 room을
+    # 치워버려 이 소켓이 버려진 room에 등록되는 경합이 생긴다.
+    room = _registry.room(robot_code)
     room.uplink_listeners.add(websocket)
     try:
         while True:
@@ -123,13 +159,16 @@ async def dashboard_audio_uplink(websocket: WebSocket, robot_code: str):
         pass
     finally:
         room.uplink_listeners.discard(websocket)
+        _registry.release(robot_code)
 
 
 @router.websocket("/ws/dashboard/{robot_code}/audio/downlink")
 async def dashboard_audio_downlink(websocket: WebSocket, robot_code: str):
     """대시보드가 자기 마이크로 캡처한 Opus 프레임을 보내는 소켓."""
-    room = _registry.room(robot_code)
     await websocket.accept()
+    # accept 뒤에 room을 얻는다 — 그 사이 await가 끼면 다른 연결의 release()가 빈 room을
+    # 치워버려 이 소켓이 버려진 room에 등록되는 경합이 생긴다.
+    room = _registry.room(robot_code)
     room.downlink_senders.add(websocket)
     try:
         while True:
@@ -139,19 +178,22 @@ async def dashboard_audio_downlink(websocket: WebSocket, robot_code: str):
         pass
     finally:
         room.downlink_senders.discard(websocket)
+        _registry.release(robot_code)
 
 
 @router.websocket("/ws/robot/{robot_code}/audio/downlink")
 async def robot_audio_downlink(websocket: WebSocket, robot_code: str):
     """로봇이 대시보드 음성을 받아 스피커로 재생하기 위해 여는 소켓. 로봇은 이
     소켓으로 아무것도 안 보낸다 — 연결 유지 목적의 수신 대기만 한다."""
-    if not _robot_exists(robot_code):
+    if not await asyncio.to_thread(robot_exists, robot_code):
         await websocket.close(code=4404)
         return
 
-    room = _registry.room(robot_code)
     await websocket.accept()
-    room.downlink_receiver = websocket
+    # accept 뒤에 room을 얻는다 — 그 사이 await가 끼면 다른 연결의 release()가 빈 room을
+    # 치워버려 이 소켓이 버려진 room에 등록되는 경합이 생긴다.
+    room = _registry.room(robot_code)
+    await room.claim_downlink_receiver(websocket)
     try:
         while True:
             await websocket.receive_bytes()
@@ -160,3 +202,4 @@ async def robot_audio_downlink(websocket: WebSocket, robot_code: str):
     finally:
         if room.downlink_receiver is websocket:
             room.downlink_receiver = None
+        _registry.release(robot_code)
