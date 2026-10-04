@@ -6,8 +6,8 @@
 서버가 자동으로 robot_status(online True/False)를 브로드캐스트하므로 별도
 heartbeat 메시지는 필요 없다.
 
-연결 유지·재연결 로직은 robot_careguard_ws/src/careguard_agent/uplink_node.py
-(LIMO용)의 _connect_forever를 그대로 재사용했다.
+연결 유지·재연결 로직은 server_link.ServerLink(다운링크와 공용)에 있다 — 이전엔 이 파일이
+LIMO uplink_node.py의 _connect_forever를 복붙해 따로 갖고 있었다.
 
 2026-09-14까지는 position 소스가 /odom(nav_msgs/Odometry)이었다 — 그 시점엔
 이 로봇이 기본 bringup만으로는 AMCL/SLAM이 켜져있지 않아 map->base_link TF도,
@@ -65,12 +65,9 @@ JPEG 디코딩 -> 뒤집기 -> 재인코딩한다. 압축 해제+재압축이라
 33~40% -> 44~50%로 오히려 증가). 그래서 원본 구독 시도는 되돌리고 압축 토픽 +
 디코딩 방식을 유지한다 — "압축 해제를 없애서 가볍게"라는 직관이 이번엔 틀렸다.
 """
-import asyncio
 import base64
-import json
 import math
 import os
-import threading
 import time
 
 import cv2
@@ -84,6 +81,7 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import BatteryState, CompressedImage, LaserScan
 
 from . import ws_config
+from .server_link import ServerLink
 
 DEFAULT_RECONNECT_DELAY_SEC = 3.0
 
@@ -141,10 +139,16 @@ class UplinkNode(Node):
                 "CAREGUARD_ROBOT_CODE=R-05 ros2 run careguard_turtlebot_agent uplink_node")
             raise SystemExit(1)
 
-        self._loop = asyncio.new_event_loop()
-        self._ws = None
-        self._connected = False
-        self._reconnect_delay_sec = _fetch_reconnect_delay_sec(self.get_logger())
+        # role=uplink를 명시해야 한다 — 안 보내면 서버(robot_ws.py)가 기본값인 downlink로
+        # 취급해서, 이 연결이 downlink_node의 명령 수신용 연결을 덮어써버린다. 그러면 서버가
+        # patrol_start/nav_prepare를 이 uplink 연결로 보내게 돼 downlink_node가 명령을 영영
+        # 못 받는다 — 2026-09-14 R-06에서 nav_prepare가 로봇까지 안 오는 문제로 실제 확인했다.
+        self._link = ServerLink(
+            url=f'{ws_config.SERVER_WS_URL}/ws/robot?robot_code={ws_config.ROBOT_CODE}&role=uplink',
+            on_message=lambda raw: None,  # 업링크는 서버가 보내는 메시지를 쓰지 않는다
+            logger=self.get_logger(),
+            role_label='업링크',
+            reconnect_delay_sec=_fetch_reconnect_delay_sec(self.get_logger()))
         self._last_camera_sent_at = 0.0
         self._latest_scan = None
 
@@ -161,8 +165,7 @@ class UplinkNode(Node):
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
         self.create_timer(SCAN_OVERLAY_INTERVAL_SEC, self._on_slam_overlay_tick)
 
-        self._thread = threading.Thread(target=self._run_ws_loop, daemon=True)
-        self._thread.start()
+        self._link.start()
 
     def _on_pose(self, msg: PoseWithCovarianceStamped):
         yaw = _yaw_from_quaternion(msg.pose.pose.orientation)
@@ -272,36 +275,7 @@ class UplinkNode(Node):
         })
 
     def _send(self, payload: dict):
-        if not self._connected or self._ws is None:
-            return
-        asyncio.run_coroutine_threadsafe(self._ws.send(json.dumps(payload)), self._loop)
-
-    def _run_ws_loop(self):
-        asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._connect_forever())
-
-    async def _connect_forever(self):
-        import websockets
-
-        # role=uplink를 명시해야 한다 — 안 보내면 서버(robot_ws.py)가 기본값인
-        # downlink로 취급해서, 이 연결이 나중에 맺어질 때 downlink_node의 명령
-        # 수신용 연결(_connections[robot_code])을 덮어써버린다. 그러면 서버가
-        # patrol_start/nav_prepare를 이 uplink 연결로 보내게 돼 downlink_node가
-        # 명령을 영영 못 받는다 — 2026-09-14 R-06에서 nav_prepare가 로봇까지
-        # 안 오는 문제로 실제 재현·확인했다(서버 로그에 role 없는 연결이 찍힘).
-        url = f'{ws_config.SERVER_WS_URL}/ws/robot?robot_code={ws_config.ROBOT_CODE}&role=uplink'
-        while rclpy.ok():
-            try:
-                async with websockets.connect(url) as ws:
-                    self._ws = ws
-                    self._connected = True
-                    self.get_logger().info(f'서버 업링크 연결됨: {url}')
-                    await ws.wait_closed()
-            except Exception as exc:  # noqa: BLE001 - 재연결 루프이므로 모든 예외를 삼킨다
-                self.get_logger().warn(f'업링크 연결 실패, {self._reconnect_delay_sec}s 후 재시도: {exc}')
-            self._connected = False
-            self._ws = None
-            await asyncio.sleep(self._reconnect_delay_sec)
+        self._link.send(payload)
 
 
 def main(args=None):

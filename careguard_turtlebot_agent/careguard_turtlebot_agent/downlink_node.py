@@ -41,6 +41,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from . import ws_config
+from .errors import WaypointLookupError
 from .nav2_manager import Nav2Manager
 from .patrol_controller import PatrolController
 from .server_link import ServerLink
@@ -69,6 +70,14 @@ class DownlinkNode(Node):
             self._nav2, self._voice, self._link.send, self.get_logger(),
             publish_recording=self._publish_patrol_recording)
 
+        # 서버 명령 type -> 핸들러. 새 명령은 여기에 한 줄 + 메서드 하나만 추가한다.
+        self._handlers = {
+            'patrol_start': self._patrol.start,
+            'patrol_stop': self._patrol.stop,
+            'nav_prepare': self._prepare_navigation,
+            'set_initial_pose': self._handle_set_initial_pose,
+        }
+
         self._link.start()
 
     def _send_nav_status(self, running: bool):
@@ -84,20 +93,15 @@ class DownlinkNode(Node):
             self.get_logger().warn(f'명령 JSON 파싱 실패: {raw!r}')
             return
 
-        msg_type = message.get('type')
-        if msg_type == 'patrol_start':
-            self._patrol.start(message)
-        elif msg_type == 'patrol_stop':
-            self._patrol.stop(message)
-        elif msg_type == 'nav_prepare':
-            self._prepare_navigation(message)
-        elif msg_type == 'set_initial_pose':
-            self._handle_set_initial_pose(message)
-        else:
+        msg_type = message.get('type') if isinstance(message, dict) else None
+        handler = self._handlers.get(msg_type)
+        if handler is None:
             # SLAM/cmd_vel 등은 아직 이 노드가 처리하지 않는다 — 조용히 버리지
             # 않고 경고를 남겨서 "명령이 어디로 갔는지 모르겠다"는 상황(이번에
             # downlink_node 자체가 없어서 겪은 문제)이 재발하지 않게 한다.
             self.get_logger().warn(f'터틀봇 downlink가 아직 처리하지 않는 명령: {msg_type!r}')
+            return
+        handler(message)
 
     def _prepare_navigation(self, message: dict):
         """P6 페이지가 열리거나 다른 로봇의 맵으로 전환될 때 오는 명령 — 실제
@@ -113,7 +117,7 @@ class DownlinkNode(Node):
             return
         try:
             charge_x, charge_y, charge_yaw = fetch_charge_waypoint(map_id)
-        except Exception as exc:  # noqa: BLE001 - 원인이 다양해(네트워크/DB/웨이포인트 없음 등) 전부 여기서 로그만 남긴다
+        except WaypointLookupError as exc:
             self.get_logger().error(f'nav_prepare용 충전 웨이포인트 조회 실패: {exc}')
             return
         self._nav2.ensure_running(map_id, charge_x, charge_y, charge_yaw)

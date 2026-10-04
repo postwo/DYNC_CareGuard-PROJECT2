@@ -11,13 +11,23 @@ from typing import Tuple
 import requests
 
 from . import ws_config
+from .errors import WaypointLookupError
 
 
 def fetch_charge_waypoint(map_id: int) -> Tuple[float, float, float]:
-    resp = requests.get(
-        f'{ws_config.SERVER_HTTP_URL}/waypoints', params={'map_id': map_id}, timeout=10)
-    resp.raise_for_status()
-    charge = next((w for w in resp.json() if w.get('kind') == 'charge'), None)
+    """충전 스테이션 (x, y, yaw)를 돌려준다. 실패하면 WaypointLookupError."""
+    try:
+        resp = requests.get(
+            f'{ws_config.SERVER_HTTP_URL}/waypoints', params={'map_id': map_id}, timeout=10)
+        resp.raise_for_status()
+        waypoints = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise WaypointLookupError(f'웨이포인트 조회 요청 실패: {exc}') from exc
+
+    charge = next((w for w in waypoints if w.get('kind') == 'charge'), None)
     if charge is None:
-        raise RuntimeError(f'map_id={map_id}에 충전 스테이션 웨이포인트가 없습니다')
-    return float(charge['pos_x']), float(charge['pos_y']), float(charge['yaw'])
+        raise WaypointLookupError(f'map_id={map_id}에 충전 스테이션 웨이포인트가 없습니다')
+    try:
+        return float(charge['pos_x']), float(charge['pos_y']), float(charge['yaw'])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WaypointLookupError(f'충전 웨이포인트 좌표 형식이 올바르지 않습니다: {charge!r}') from exc

@@ -22,6 +22,7 @@ from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from rclpy.node import Node
 
 from . import ws_config
+from .errors import MapDownloadError
 
 # 서버에서 받아온 맵을 저장해둘 자리 — careguard_agent(LIMO)의 NAV_MAP_DIR과
 # 같은 이유(SLAM 산출물이 아니라 순찰용으로 서버에서 도로 받아온 사본)로 이름을
@@ -72,7 +73,7 @@ class Nav2Manager:
         """이 map_id로 이미 떠있는지 확인하고, 아니면 새로 띄운다."""
         try:
             yaml_path, changed = self._download_map(map_id)
-        except Exception as exc:  # noqa: BLE001 - 다운로드 실패 원인이 다양해 전부 여기서 로그만 남긴다
+        except MapDownloadError as exc:
             self._logger.error(f'맵 다운로드 실패: {exc}')
             self._report_status(False)
             return False
@@ -87,10 +88,15 @@ class Nav2Manager:
             self._map_id = 0
 
         self._logger.info(f'Nav2 시작: map_id={map_id} ({yaml_path})')
-        self._process = subprocess.Popen(
-            ['ros2', 'launch', 'nav2_bringup', 'bringup_launch.py',
-             f'map:={yaml_path}', f'params_file:={NAV2_PARAMS_FILE}', 'use_sim_time:=False'],
-            start_new_session=True)
+        try:
+            self._process = subprocess.Popen(
+                ['ros2', 'launch', 'nav2_bringup', 'bringup_launch.py',
+                 f'map:={yaml_path}', f'params_file:={NAV2_PARAMS_FILE}', 'use_sim_time:=False'],
+                start_new_session=True)
+        except OSError as exc:  # ros2 실행 파일 없음·권한 문제 등
+            self._logger.error(f'Nav2 프로세스를 시작하지 못했습니다: {exc}')
+            self._report_status(False)
+            return False
         self._map_id = map_id
 
         deadline = time.monotonic() + NAV2_READY_TIMEOUT_SEC
@@ -166,26 +172,56 @@ class Nav2Manager:
     def _download_map(self, map_id: int) -> Tuple[str, bool]:
         """GET /maps/active에서 이 로봇의 활성 맵 이미지+메타데이터를 받아
         로컬에 저장하고 (yaml 경로, 내용이 바뀌었는지)를 반환한다.
+        실패하면 MapDownloadError(네트워크·서버 데이터 불일치·파일 저장 오류 모두).
         """
-        resp = requests.get(f'{ws_config.SERVER_HTTP_URL}/maps/active', timeout=10)
-        resp.raise_for_status()
-        entry = next((m for m in resp.json() if m.get('robot_code') == ws_config.ROBOT_CODE), None)
-        if entry is None or not entry.get('image_url'):
-            raise RuntimeError(f'서버에 robot_code={ws_config.ROBOT_CODE}의 활성 맵 이미지가 없습니다')
-        if entry.get('id') != map_id:
-            raise RuntimeError(
-                f'요청받은 map_id={map_id}가 서버의 현재 활성 맵(id={entry.get("id")})과 다릅니다')
+        entry = self._fetch_active_map_entry(map_id)
+        image_bytes = self._fetch_image(entry['image_url'])
 
         os.makedirs(NAV_MAP_DIR, exist_ok=True)
         pgm_path = os.path.join(NAV_MAP_DIR, f'nav_map_{map_id}.pgm')
         yaml_path = os.path.join(NAV_MAP_DIR, f'nav_map_{map_id}.yaml')
+        yaml_bytes = self._build_map_yaml(entry, os.path.basename(pgm_path))
 
-        image_resp = requests.get(f"{ws_config.SERVER_HTTP_URL}{entry['image_url']}", timeout=30)
-        image_resp.raise_for_status()
-        new_image_bytes = image_resp.content
+        try:
+            changed = self._differs_from_disk(pgm_path, yaml_path, image_bytes, yaml_bytes)
+            with open(pgm_path, 'wb') as f:
+                f.write(image_bytes)
+            with open(yaml_path, 'wb') as f:
+                f.write(yaml_bytes)
+        except OSError as exc:
+            raise MapDownloadError(f'맵 파일 저장 실패: {exc}') from exc
+        return yaml_path, changed
 
-        yaml_content = {
-            'image': os.path.basename(pgm_path),
+    @staticmethod
+    def _fetch_active_map_entry(map_id: int) -> dict:
+        try:
+            resp = requests.get(f'{ws_config.SERVER_HTTP_URL}/maps/active', timeout=10)
+            resp.raise_for_status()
+            entries = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise MapDownloadError(f'활성 맵 목록 조회 실패: {exc}') from exc
+
+        entry = next((m for m in entries if m.get('robot_code') == ws_config.ROBOT_CODE), None)
+        if entry is None or not entry.get('image_url'):
+            raise MapDownloadError(f'서버에 robot_code={ws_config.ROBOT_CODE}의 활성 맵 이미지가 없습니다')
+        if entry.get('id') != map_id:
+            raise MapDownloadError(
+                f'요청받은 map_id={map_id}가 서버의 현재 활성 맵(id={entry.get("id")})과 다릅니다')
+        return entry
+
+    @staticmethod
+    def _fetch_image(image_url: str) -> bytes:
+        try:
+            resp = requests.get(f'{ws_config.SERVER_HTTP_URL}{image_url}', timeout=30)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            raise MapDownloadError(f'맵 이미지 다운로드 실패: {exc}') from exc
+        return resp.content
+
+    @staticmethod
+    def _build_map_yaml(entry: dict, image_filename: str) -> bytes:
+        content = {
+            'image': image_filename,
             'mode': entry.get('mode') or 'trinary',
             'resolution': entry.get('resolution') or 0.05,
             'origin': [entry.get('origin_x', 0.0), entry.get('origin_y', 0.0), entry.get('origin_yaw', 0.0)],
@@ -193,21 +229,18 @@ class Nav2Manager:
             'occupied_thresh': entry.get('occupied_thresh', 0.65),
             'free_thresh': entry.get('free_thresh', 0.196),
         }
-        new_yaml_bytes = yaml.safe_dump(yaml_content, default_flow_style=None, sort_keys=False).encode()
+        return yaml.safe_dump(content, default_flow_style=None, sort_keys=False).encode()
 
-        changed = True
-        if os.path.exists(pgm_path) and os.path.exists(yaml_path):
-            with open(pgm_path, 'rb') as f:
-                old_image_bytes = f.read()
-            with open(yaml_path, 'rb') as f:
-                old_yaml_bytes = f.read()
-            changed = new_image_bytes != old_image_bytes or new_yaml_bytes != old_yaml_bytes
-
-        with open(pgm_path, 'wb') as f:
-            f.write(new_image_bytes)
-        with open(yaml_path, 'wb') as f:
-            f.write(new_yaml_bytes)
-        return yaml_path, changed
+    @staticmethod
+    def _differs_from_disk(pgm_path: str, yaml_path: str, image_bytes: bytes, yaml_bytes: bytes) -> bool:
+        """디스크에 같은 내용이 이미 있으면 False — 같은 맵이면 Nav2를 다시 띄우지 않는다."""
+        if not (os.path.exists(pgm_path) and os.path.exists(yaml_path)):
+            return True
+        with open(pgm_path, 'rb') as f:
+            old_image = f.read()
+        with open(yaml_path, 'rb') as f:
+            old_yaml = f.read()
+        return image_bytes != old_image or yaml_bytes != old_yaml
 
     def _terminate_process_group(self, process: subprocess.Popen, label: str):
         """ros2 launch 프로세스 하나에만 신호를 보내면 그 밑의 실제 자식
