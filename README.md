@@ -57,6 +57,15 @@
 | 6 | 보호자 뷰 | 연결된 대상자로 범위가 제한된 읽기 전용 모드 + 이메일 알림 |
 | 7 | 신규 로봇 온보딩 | 로봇 등록 → WebSocket 연결 → SLAM 매핑 → 웨이포인트·경로·스케줄 구성 |
 
+## 🚗 로봇 주행
+
+실내 공간에서 실제 로봇이 주행하는 모습입니다. GIF는 주행 구간을 발췌한 미리보기이며, 전체 시연 영상은 링크에서 받아 볼 수 있습니다.
+
+| LIMO (R-07) | TurtleBot3 (R-05/R-06) |
+| :-: | :-: |
+| <img src="docs/images/patrol_limo_driving.gif" alt="LIMO 주행" width="100%" /> | <img src="docs/images/patrol_turtlebot_driving.gif" alt="TurtleBot3 주행" width="100%" /> |
+| [▶ 시연 영상 1 (전체)](docs/videos/careguard_demo_1.mp4) | [▶ 시연 영상 2 (전체)](docs/videos/careguard_demo_2.mp4) |
+
 ## 🖥 관제 대시보드
 
 > Qt6 C++ 데스크톱 앱. 위험도·상태 우선순위(`EMERGENCY > ATTENTION > OFFLINE > NORMAL`)에 따라 조치가 급한 항목이 위로 올라옵니다.
