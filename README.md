@@ -1,115 +1,132 @@
-# DYNC_CareGuard
+<div align="center">
 
-2차 메인프로젝트 — 노인돌봄서비스. 실내 자율주행 로봇(LIMO/TurtleBot3)이 독거노인 가정을 정기 순찰하며 복약을 관리하고, 이상 상황(낙상·SOS·미등록 침입자 등)을 감지해 원격 관제 대시보드와 보호자에게 즉시 알린다.
+# 🤖 DYNC CareGuard
 
-## 프로젝트 개요
+**독거노인 돌봄 공백을 로봇과 원격 관제로 메우는 순찰 · 복약 · 응급 대응 서비스**
 
-- **문제의식**: 독거노인 돌봄 공백 — 상시 대면 케어가 어려운 상황에서 복약 관리·안전 확인·응급 대응을 로봇과 원격 관제로 보완한다.
-- **구성 요소**: 실내 자율주행 로봇(순찰·복약 전달·안면인식) ↔ FastAPI 중앙 서버(WebSocket 상시 연결, PostgreSQL) ↔ Qt 관제 대시보드(관제사) + 로봇 후면 키오스크(현장 표시) + 이메일 알림(보호자).
-- **개발 방식**: 실제 로봇 하드웨어(LIMO, TurtleBot3)에 배포해 실기 검증하며 개발한다. 발견된 문제와 원인·해결 과정은 [`docs/TroubleShooting/`](./docs/TroubleShooting)에 전부 기록한다.
+![ROS 2](https://img.shields.io/badge/ROS_2-22314E?style=flat-square&logo=ros&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Qt6](https://img.shields.io/badge/Qt6-41CD52?style=flat-square&logo=qt&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![MQTT](https://img.shields.io/badge/MQTT-660066?style=flat-square&logo=mqtt&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?style=flat-square&logo=opencv&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
 
-전체 사용 흐름(순찰·복약·SOS·침입자 대응·관제사 운영)은 [`docs/CareGuard_SCENARIO.md`](./docs/CareGuard_SCENARIO.md)에 정리돼 있다.
+</div>
 
-## 핵심 기능
+## 📖 프로젝트 소개
 
-- **정기 순찰**: 스케줄(요일·시각) 또는 수동 트리거로 로봇이 등록된 웨이포인트를 순회. 순찰 중 카메라로 대상자 안면을 인식해 정지→접근→재판별 후 등록자 확인 또는 침입자(`INTRUDER`) 이벤트 발생.
-- **복약 관리**: 복약 스케줄에 맞춰 로봇이 대상자에게 이동 → 음성 안내 → 약통 슬롯 개방(아두이노 서보) → IR 센서로 수령 확인 → 결과를 `medication_log`에 기록. 미수령/연속 미수령은 이벤트로 승격.
-- **응급 대응(SOS)**: 로봇 LCD 화면 버튼(`SOS_SCREEN`), 후면 물리 버튼(`SOS_BUTTON`), 음성 도움 요청(`SOS_VOICE`) 3가지 경로로 이벤트 발생 → 관제 대시보드 실시간 알림 → 관제사가 로봇과 스피커 통화 또는 119 모의 신고 시작 → 로봇 후면 키오스크에 상태 실시간 표시.
-- **통합 관제 대시보드(Qt, P1~P8)**: 로봇/대상자 통합 현황(P1), 이벤트 큐 처리(P2), 대상자·보호자 관리(P3), 순찰 영상 확인(P4), SLAM 매핑(P5), 순찰 경로·스케줄 편집(P6), 로봇·계정·임계값 설정(P7), 감사 로그(P8).
-- **보호자 알림/열람**: 이벤트 발생 시 보호자에게 이메일 발송(SMTP), 보호자 계정으로 로그인하면 자신의 대상자로 범위가 제한된 읽기 전용 화면 제공.
-- **원격 텔레옵/맵핑**: SLAM으로 맵을 새로 만들고, 방향키 기반 원격 조종으로 로봇을 움직이며 웨이포인트(순찰 지점/충전 스테이션)를 등록.
+실내 자율주행 로봇(LIMO / TurtleBot3)이 독거노인 가정을 정기 순찰하며 **복약을 관리**하고, 낙상·SOS·미등록 침입자 같은 **이상 상황을 감지**해 원격 관제 대시보드와 보호자에게 즉시 알립니다.
 
-기능별 판단 기준(상태 배지 우선순위, 상태별 퀵액션 등)은 [`docs/design/CareGuard_DESIGN_SYSTEM.md`](./docs/design/CareGuard_DESIGN_SYSTEM.md) 참고.
+- **문제의식**: 상시 대면 케어가 어려운 독거노인 가정의 복약 관리·안전 확인·응급 대응 공백
+- **구성**: 순찰·복약 로봇 ↔ FastAPI 중앙 서버(WebSocket, PostgreSQL) ↔ Qt 관제 대시보드 + 로봇 후면 키오스크 + 보호자 이메일 알림
+- **개발 방식**: 실제 로봇(LIMO, TurtleBot3)에 배포해 실기 검증하며 개발하고, 발견된 문제와 원인·해결 과정은 [`docs/TroubleShooting/`](docs/TroubleShooting)에 모두 기록
 
-## 시스템 구성
+## ✨ 핵심 기능
 
-```
-┌──────────────────┐        WebSocket (상시 연결)        ┌───────────────────────┐
-│  로봇 (LIMO /     │ ───────────────────────────────────▶│  FastAPI 서버           │
-│  TurtleBot3)      │◀─────────────────────────────────── │  (pc_careguard/server) │
-│  ROS2 + 아두이노   │        REST (명령/조회)              │  + PostgreSQL          │
-└──────────────────┘                                      └───────┬───────────────┘
-                                                                   │ WebSocket / REST
-                                    ┌──────────────────────────────┼──────────────────┐
-                                    ▼                              ▼                  ▼
-                          Qt 관제 대시보드(P1~P8)        로봇 후면 키오스크        보호자 이메일(SMTP)
-                          (관제사, pc_careguard/dashboard) (deploy/robot_kiosk)
-```
+| 기능 | 내용 |
+| :-- | :-- |
+| 🚶 정기 순찰 | 요일·시각 스케줄 또는 수동 트리거로 웨이포인트 순회, 안면인식으로 재실 확인 후 자동 충전 복귀 |
+| 💊 복약 관리 | 복약 시각에 대상자에게 이동 → 음성 안내 → 약통 슬롯 개방(Arduino 서보) → IR 센서로 수령 확인 → 기록 |
+| 🚨 응급 대응(SOS) | 화면 버튼 · 후면 물리 버튼 · 음성 3가지 경로, 관제사 스피커 통화(Opus) 및 119 모의 신고, 로봇별 E-STOP |
+| 🕵️ 침입자 감지 | 정지 → 접근 → 근접 재판별 절차로 오탐을 줄이고 `INTRUDER` 이벤트 발행 |
+| 🖥 통합 관제 대시보드 | Qt6 C++ 앱(P1~P8): 이벤트 큐, 대상자·보호자, 영상, SLAM 매핑, 경로·스케줄, 설정, 감사 로그 |
+| 👪 보호자 알림/열람 | 이벤트 발생 시 SMTP 이메일, 보호자 계정은 본인 대상자로 제한된 읽기 전용 화면 |
 
-- 로봇은 서버와의 유일한 통신구인 `careguard_agent`(uplink/downlink 노드)를 통해서만 외부와 통신한다 — 다른 ROS2 노드는 서버를 직접 모르는 구조.
-- ESP32 등 저사양 응급 호출 버튼은 MQTT(mosquitto)로 별도 연결된다.
+## 🏗 시스템 아키텍처
 
-## 기술 스택
+<div align="center">
+  <img src="docs/images/architecture.png" alt="CareGuard 시스템 아키텍처" width="85%" />
+</div>
+
+- 로봇은 서버와의 **유일한 통신구인 `careguard_agent`**(uplink/downlink 노드)로만 외부와 통신합니다. 다른 ROS 2 노드는 서버를 직접 알지 못합니다.
+- ESP32 등 저사양 응급 호출 버튼은 MQTT(mosquitto)로 별도 연결됩니다.
+- 로봇 쪽 워크스페이스는 PC에서 `rsync`로 배포하며, 로봇은 git 클라이언트 없이 수신 대상 역할만 합니다.
+
+## 🎬 시나리오
+
+자세한 단계별 흐름은 [`docs/CareGuard_SCENARIO.md`](docs/CareGuard_SCENARIO.md)에 있습니다.
+
+| # | 시나리오 | 요약 |
+| :-: | :-- | :-- |
+| 1 | 정기 순찰과 재실 확인 | 서버 스케줄러가 20초 틱으로 순찰을 시작, 사람을 감지하면 정지·접근·재판별 후 등록자 확인 |
+| 2 | 복약 시간 관리 | 대상자 확인 후 음성 안내와 슬롯 개방, IR 센서로 수령 확인, 미수령 반복 시 이벤트 승격 |
+| 3 | 미등록 인물 감지 | 재확인 실패/미등록 판정 시 `INTRUDER`(emergency) 발행, 5분/2회 접근 제한으로 과도한 추적 방지 |
+| 4 | 응급 상황(SOS) 대응 | 3가지 경로 → 대시보드 즉시 알림 → 스피커 통화 / 119 모의 신고 → 키오스크 상태 표시 |
+| 5 | 관제사의 일상 운영 | P1~P8 대시보드 워크스루 |
+| 6 | 보호자 뷰 | 연결된 대상자로 범위가 제한된 읽기 전용 모드 + 이메일 알림 |
+| 7 | 신규 로봇 온보딩 | 로봇 등록 → WebSocket 연결 → SLAM 매핑 → 웨이포인트·경로·스케줄 구성 |
+
+## 🖥 관제 대시보드
+
+> Qt6 C++ 데스크톱 앱. 위험도·상태 우선순위(`EMERGENCY > ATTENTION > OFFLINE > NORMAL`)에 따라 조치가 급한 항목이 위로 올라옵니다.
+
+### P2 이벤트 관제
+<img src="docs/images/dashboard/events.png" alt="이벤트 관리" width="100%" />
+
+미처리 필터가 기본이며 발생일시 기준으로 실시간 정렬됩니다. 상세 모달에서 진행 상황·조치·메모를 남기고 완료 처리합니다.
+
+### P3 대상자 관리
+<img src="docs/images/dashboard/recipients.png" alt="대상자 관리" width="100%" />
+
+위험도 순 카드 그리드(오늘 발생 이벤트 기준)에서 기본 정보 · 웨어러블 임계값 · 복약 스케줄 · 보호자 연락처를 관리합니다.
+
+### P4 영상 관리 · P5 맵/로봇 매핑
+| P4 영상 관리 | P5 맵 · 로봇 |
+| :-: | :-: |
+| <img src="docs/images/dashboard/videos.png" alt="영상 관리" /> | <img src="docs/images/dashboard/map_mapping.png" alt="맵·로봇 매핑" /> |
+| 재생 전 열람 사유 입력, 열람 이력은 즉시 감사 로그에 기록 | SLAM 매핑과 방향키 텔레옵, 웨이포인트 등록 |
+
+### P7 시스템 설정
+| 로봇 관리 | 계정 관리 | 임계값 · 알림 |
+| :-: | :-: | :-: |
+| <img src="docs/images/dashboard/settings_robots.png" alt="로봇 관리" /> | <img src="docs/images/dashboard/settings_accounts.png" alt="계정 관리" /> | <img src="docs/images/dashboard/settings_thresholds.png" alt="임계값·알림" /> |
+
+### P8 통합 로그
+| 사용자 로그 | 임계값 · 알림 로그 | 경로 · 순찰 로그 |
+| :-: | :-: | :-: |
+| <img src="docs/images/dashboard/logs_user.png" alt="사용자 로그" /> | <img src="docs/images/dashboard/logs_alerts.png" alt="임계값·알림 로그" /> | <img src="docs/images/dashboard/logs_patrol.png" alt="경로·순찰 로그" /> |
+
+## 🛠 기술 스택
 
 | 영역 | 스택 |
-|---|---|
-| 로봇 소프트웨어 | ROS2 (Python), Nav2, Cartographer(SLAM), OpenCV/YOLO 기반 안면인식, pyserial(아두이노 약통·서보) |
+| :-- | :-- |
+| 로봇 소프트웨어 | ROS 2 (Python), Nav2, Cartographer(SLAM), OpenCV/YOLO 안면인식, pyserial(Arduino 약통·서보) |
 | 서버 | FastAPI, PostgreSQL, WebSocket, SMTP(보호자 이메일), MQTT(mosquitto) |
-| 대시보드 | Qt6 C++ (Widgets/SvgWidgets/Multimedia/Network/WebSockets), Opus(음성 통화 코덱) |
-| 로봇 후면 키오스크 | 정적 HTML/JS (빌드 없이 브라우저로 실행) |
-| 인프라 | Docker Compose(postgres, mosquitto), rsync 기반 로봇 배포, systemd 서비스 |
+| 대시보드 | Qt6 C++ (Widgets / SvgWidgets / Multimedia / Network / WebSockets), Opus(음성 통화) |
+| 로봇 후면 키오스크 | 정적 HTML/JS (빌드 없이 브라우저 실행) |
+| 로봇 하드웨어 | LIMO(R-07), TurtleBot3(R-05/R-06), Arduino, ESP32 |
+| 인프라 | Docker Compose(postgres, mosquitto), rsync 로봇 배포, systemd, Tailscale VPN |
 
-## 리포지토리 구조
+## 📚 문서
 
-```
-DYNC_CareGuard/                    # git repo 루트 (개발은 PC에서 전체를 checkout)
-├── robot_careguard_ws/            # ROS2 워크스페이스(LIMO) → deploy/sync_to_limo.sh로 rsync 배포
-│   └── src/  careguard_agent · careguard_bringup · careguard_mission · careguard_nav
-│              careguard_perception · careguard_hw · careguard_hmi · careguard_msgs
-├── careguard_turtlebot_agent/     # TurtleBot3(R-05/R-06) 전용 에이전트 패키지
-├── pc_careguard/                  # PC에서 실행 (server + dashboard)
-│   ├── server/                    # FastAPI
-│   ├── dashboard/                 # Qt C++
-│   └── db/                        # schema/(최신 1개 파일) · migrations/(이력)
-├── shared/
-│   └── api_contract/              # OpenAPI 스펙 · 이벤트 코드 정의 (양쪽 참조)
-├── docs/                          # 시나리오서 · 설계 · 트러블슈팅 기록
-│   ├── CareGuard_SCENARIO.md      # 전체 사용 시나리오
-│   ├── design/                    # 디자인 시스템
-│   └── TroubleShooting/           # 실기 개발 중 발견된 문제/원인/해결 기록
-├── deploy/                        # docker-compose.yml · sync_to_limo.sh · robot_kiosk/
-├── scripts/
-│   └── setup-git-hooks.sh         # .githooks/ 활성화 (core.hooksPath 설정)
-├── .githooks/                     # commit-msg · pre-commit (COMMIT_RULES.md 강제)
-├── COMMIT_RULES.md                # 브랜치 전략 · 커밋 메시지 · PR 규칙
-├── CONVENTIONS.md                 # 네이밍 · 리포 구조 · 파일 관리 규칙
-└── .gitattributes                 # LFS 규칙 (*.stl, *.pgm)
-```
+| 문서 | 설명 |
+| :-- | :-- |
+| [CareGuard_SCENARIO.md](docs/CareGuard_SCENARIO.md) | 전체 사용 시나리오 7종 + 알려진 한계 |
+| [WORKSPACE_GUIDE.md](docs/WORKSPACE_GUIDE.md) | 리포지토리 구조 · 개발 환경 실행 · DB 스키마 (기존 README) |
+| [FOLDER_STRUCTURE.md](docs/FOLDER_STRUCTURE.md) | 패키지/파일 상세 설계 |
+| [CareGuard_DESIGN_SYSTEM.md](docs/design/CareGuard_DESIGN_SYSTEM.md) | 상태 배지 우선순위, 퀵액션 등 UI 판단 기준 |
+| [TroubleShooting/](docs/TroubleShooting) | 실기 개발 중 발견된 문제 · 원인 · 해결 기록 |
+| [COMMIT_RULES.md](COMMIT_RULES.md) | 브랜치 전략 · 커밋 메시지 · PR 규칙 |
+| [CONVENTIONS.md](CONVENTIONS.md) | 네이밍 · 리포 구조 · 파일 관리 규칙 |
 
-- **개발/배포 방식**: LIMO/TurtleBot3에서 별도로 git checkout하지 않는다. 전체 리포는 PC에서 개발하고, 로봇 쪽 워크스페이스만 rsync로 로봇에 밀어넣어 실행한다. 로봇은 git 클라이언트 없이 rsync 수신 대상 역할만 한다.
-- **.githooks/**: 클론 후 `./scripts/setup-git-hooks.sh` 한 번 실행해야 활성화됨. 자세한 내용은 [`COMMIT_RULES.md`](COMMIT_RULES.md) 5절 참고.
-
-각 디렉토리 하위의 상세 패키지/파일 설계는 [`docs/FOLDER_STRUCTURE.md`](docs/FOLDER_STRUCTURE.md) 참고. 브랜치·커밋·PR 규칙은 [`COMMIT_RULES.md`](COMMIT_RULES.md), 네이밍·파일 관리 규칙은 [`CONVENTIONS.md`](CONVENTIONS.md) 참고.
-
-## 개발 환경 실행
+## 🚀 빠른 시작
 
 ```bash
 # 1) PostgreSQL + MQTT 브로커
-cd deploy && cp .env.example .env   # 필요시 값 수정
-docker compose up -d
+cd deploy && cp .env.example .env && docker compose up -d
 
 # 2) FastAPI 서버
-cd pc_careguard/server
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+cd pc_careguard/server && pip install -r requirements.txt && uvicorn app.main:app --reload
 
 # 3) Qt 대시보드 (Qt6 + libopus-dev 필요)
-sudo apt install libopus-dev
-cd pc_careguard/dashboard
-cmake -B build && cmake --build build
-./build/careguard_dashboard
-
-# 4) 로봇 배포 (LIMO)
-LIMO_HOST=user@<로봇IP> deploy/sync_to_limo.sh --build
-
-# 5) 로봇 후면 키오스크 (빌드 불필요)
-open deploy/robot_kiosk/index.html
+cd pc_careguard/dashboard && cmake -B build && cmake --build build && ./build/careguard_dashboard
 ```
 
-DB 스키마는 `pc_careguard/db/schema/careguard_schema.sql` 하나가 항상 최신 상태를 유지하며(`docker-entrypoint-initdb.d`가 자동 반영), 이력은 `pc_careguard/db/migrations/`에 번호순으로 남긴다.
+로봇 배포(`deploy/sync_to_limo.sh`), 키오스크 실행, DB 스키마 규칙은 [WORKSPACE_GUIDE](docs/WORKSPACE_GUIDE.md)를 참고하세요.
 
-## 현재 상태 / 참고
+## ⚠️ 알려진 한계
 
-- 실기 검증이 가장 많이 이뤄진 로봇은 **R-07(LIMO)**이며, TurtleBot3 계열(R-05/R-06)은 별도 PC(`careguard_turtlebot_agent`)에서 운용된다.
-- 진행 중인 이슈와 재발 방지책은 [`docs/TroubleShooting/`](./docs/TroubleShooting)에서 날짜순으로 확인할 수 있다 — 특히 아직 코드 수정이 적용되지 않은 진단 기록은 파일명에 명시돼 있다.
-- 보호자 로그인은 읽기 전용이며, 보호자 계정 자체는 시스템 설정(P7)에서 관리자가 발급한다.
+- P6 페이지를 짧은 간격으로 재진입하면 순찰 실행 프로세스가 재시작되는 레이스가 진단되었고, 코드 수정은 반영 전입니다.
+- 침입자 오탐(회피 판정 후 뒤늦은 정정) 레이스는 별도 조치 전 상태입니다.
+- 119 모의 신고는 실제 신고가 아닌 시연용 표시 기능입니다.
