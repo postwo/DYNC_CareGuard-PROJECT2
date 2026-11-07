@@ -135,5 +135,3 @@ cd pc_careguard/server && pip install -r requirements.txt && uvicorn app.main:ap
 # 3) Qt 대시보드 (Qt6 + libopus-dev 필요)
 cd pc_careguard/dashboard && cmake -B build && cmake --build build && ./build/careguard_dashboard
 ```
-
-로봇 배포(`deploy/sync_to_limo.sh`), 키오스크 실행, DB 스키마 규칙은 [WORKSPACE_GUIDE](docs/WORKSPACE_GUIDE.md)를 참고하세요.
