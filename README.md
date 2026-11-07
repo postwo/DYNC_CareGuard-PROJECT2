@@ -66,7 +66,7 @@
 | LIMO (R-07) | TurtleBot3 (R-05/R-06) |
 | :-: | :-: |
 | <img src="docs/images/patrol_limo_driving.gif" alt="LIMO 주행" width="100%" /> | <img src="docs/images/patrol_turtlebot_driving.gif" alt="TurtleBot3 주행" width="100%" /> |
-| [▶ 시연 영상 1 (전체)](docs/videos/careguard_demo_1.mp4) | [▶ 시연 영상 2 (전체)](docs/videos/careguard_demo_2.mp4) |
+| [▶ 시연 영상 1 (전체)](https://youtu.be/W13FbSS3s6g) | [▶ 시연 영상 2 (전체)](https://youtu.be/5YQFwCbIxe0) |
 
 <!--
 ## 🖥 관제 대시보드
