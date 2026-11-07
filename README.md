@@ -137,11 +137,3 @@ cd pc_careguard/dashboard && cmake -B build && cmake --build build && ./build/ca
 ```
 
 로봇 배포(`deploy/sync_to_limo.sh`), 키오스크 실행, DB 스키마 규칙은 [WORKSPACE_GUIDE](docs/WORKSPACE_GUIDE.md)를 참고하세요.
-
-<!--
-## ⚠️ 알려진 한계
-
-- P6 페이지를 짧은 간격으로 재진입하면 순찰 실행 프로세스가 재시작되는 레이스가 진단되었고, 코드 수정은 반영 전입니다.
-- 침입자 오탐(회피 판정 후 뒤늦은 정정) 레이스는 별도 조치 전 상태입니다.
-- 119 모의 신고는 실제 신고가 아닌 시연용 표시 기능입니다.
--->
