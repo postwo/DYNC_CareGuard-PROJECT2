@@ -68,6 +68,7 @@
 | <img src="docs/images/patrol_limo_driving.gif" alt="LIMO 주행" width="100%" /> | <img src="docs/images/patrol_turtlebot_driving.gif" alt="TurtleBot3 주행" width="100%" /> |
 | [▶ 시연 영상 1 (전체)](docs/videos/careguard_demo_1.mp4) | [▶ 시연 영상 2 (전체)](docs/videos/careguard_demo_2.mp4) |
 
+<!--
 ## 🖥 관제 대시보드
 
 > Qt6 C++ 데스크톱 앱. 위험도·상태 우선순위(`EMERGENCY > ATTENTION > OFFLINE > NORMAL`)에 따라 조치가 급한 항목이 위로 올라옵니다.
@@ -97,6 +98,7 @@
 | 사용자 로그 | 임계값 · 알림 로그 | 경로 · 순찰 로그 |
 | :-: | :-: | :-: |
 | <img src="docs/images/dashboard/logs_user.png" alt="사용자 로그" /> | <img src="docs/images/dashboard/logs_alerts.png" alt="임계값·알림 로그" /> | <img src="docs/images/dashboard/logs_patrol.png" alt="경로·순찰 로그" /> |
+-->
 
 ## 🛠 기술 스택
 
@@ -135,9 +137,3 @@ cd pc_careguard/dashboard && cmake -B build && cmake --build build && ./build/ca
 ```
 
 로봇 배포(`deploy/sync_to_limo.sh`), 키오스크 실행, DB 스키마 규칙은 [WORKSPACE_GUIDE](docs/WORKSPACE_GUIDE.md)를 참고하세요.
-
-## ⚠️ 알려진 한계
-
-- P6 페이지를 짧은 간격으로 재진입하면 순찰 실행 프로세스가 재시작되는 레이스가 진단되었고, 코드 수정은 반영 전입니다.
-- 침입자 오탐(회피 판정 후 뒤늦은 정정) 레이스는 별도 조치 전 상태입니다.
-- 119 모의 신고는 실제 신고가 아닌 시연용 표시 기능입니다.
