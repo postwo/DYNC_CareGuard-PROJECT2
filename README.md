@@ -68,6 +68,7 @@
 | <img src="docs/images/patrol_limo_driving.gif" alt="LIMO 주행" width="100%" /> | <img src="docs/images/patrol_turtlebot_driving.gif" alt="TurtleBot3 주행" width="100%" /> |
 | [▶ 시연 영상 1 (전체)](docs/videos/careguard_demo_1.mp4) | [▶ 시연 영상 2 (전체)](docs/videos/careguard_demo_2.mp4) |
 
+<!--
 ## 🖥 관제 대시보드
 
 > Qt6 C++ 데스크톱 앱. 위험도·상태 우선순위(`EMERGENCY > ATTENTION > OFFLINE > NORMAL`)에 따라 조치가 급한 항목이 위로 올라옵니다.
@@ -97,6 +98,7 @@
 | 사용자 로그 | 임계값 · 알림 로그 | 경로 · 순찰 로그 |
 | :-: | :-: | :-: |
 | <img src="docs/images/dashboard/logs_user.png" alt="사용자 로그" /> | <img src="docs/images/dashboard/logs_alerts.png" alt="임계값·알림 로그" /> | <img src="docs/images/dashboard/logs_patrol.png" alt="경로·순찰 로그" /> |
+-->
 
 ## 🛠 기술 스택
 
