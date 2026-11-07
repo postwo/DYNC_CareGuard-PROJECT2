@@ -1,0 +1,839 @@
+#include "net/api_client.h"
+
+#include <QFile>
+#include <QFileInfo>
+#include <QHttpMultiPart>
+#include <QHttpPart>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QRegularExpression>
+#include <QUrl>
+#include <QUrlQuery>
+
+#include "net/server_config.h"
+
+ApiClient::ApiClient(QObject* parent) : QObject(parent) {
+    serverUrl_ = ServerConfig::resolveServerUrl();
+    netManager_ = new QNetworkAccessManager(this);
+}
+
+void ApiClient::getJsonArray(const QString& path, std::function<void(bool, const QByteArray&)> callback) {
+    QNetworkRequest request(QUrl(serverUrl_ + path));
+    QNetworkReply* reply = netManager_->get(request);
+    connect(reply, &QNetworkReply::finished, this, [reply, callback] {
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const bool ok = statusCode == 200;
+        callback(ok, ok ? reply->readAll() : QByteArray());
+        reply->deleteLater();
+    });
+}
+
+void ApiClient::fetchBytes(const QString& path, std::function<void(bool, const QByteArray&)> callback) {
+    // 원본 바이트를 그대로 넘기면 되는 요청이라 내부적으로 getJsonArray()와 동일하게 동작한다.
+    getJsonArray(path, callback);
+}
+
+namespace {
+// 실패 응답 본문에서 FastAPI 표준 에러 형식({"detail": "..."})을 뽑아낸다. 파싱 실패
+// 시엔 원본 바이트를 그대로 문자열로 보여준다(디버깅용).
+QString extractErrorDetail(const QByteArray& body) {
+    const QJsonObject o = QJsonDocument::fromJson(body).object();
+    if (o.contains(QStringLiteral("detail"))) return o.value(QStringLiteral("detail")).toString();
+    return QString::fromUtf8(body);
+}
+
+// 서버는 마이크로초(6자리)까지 주는데 Qt::ISODateWithMs는 밀리초(3자리)까지만 인식해서
+// 잘라낸다. p4_video_page.cpp/p7_settings_page.cpp의 같은 헬퍼와 동일한 처리.
+QDateTime parseIsoDateTime(const QString& raw) {
+    if (raw.isEmpty()) return QDateTime();
+    QString trimmed = raw;
+    static const QRegularExpression fracRe(QStringLiteral("\\.(\\d{3})\\d*"));
+    trimmed.replace(fracRe, QStringLiteral(".\\1"));
+    QDateTime dt = QDateTime::fromString(trimmed, Qt::ISODateWithMs);
+    if (!dt.isValid()) dt = QDateTime::fromString(trimmed, Qt::ISODate);
+    return dt;
+}
+}  // namespace
+
+void ApiClient::postJson(const QString& path, const QJsonObject& body,
+                          std::function<void(bool, const QByteArray&, const QString&)> callback) {
+    QNetworkRequest request(QUrl(serverUrl_ + path));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    QNetworkReply* reply = netManager_->post(request, QJsonDocument(body).toJson());
+    connect(reply, &QNetworkReply::finished, this, [reply, callback] {
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray respBody = reply->readAll();
+        const bool ok = statusCode >= 200 && statusCode < 300;
+        callback(ok, respBody, ok ? QString() : extractErrorDetail(respBody));
+        reply->deleteLater();
+    });
+}
+
+void ApiClient::putJson(const QString& path, const QJsonObject& body,
+                         std::function<void(bool, const QByteArray&, const QString&)> callback) {
+    QNetworkRequest request(QUrl(serverUrl_ + path));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    QNetworkReply* reply = netManager_->sendCustomRequest(request, "PUT", QJsonDocument(body).toJson());
+    connect(reply, &QNetworkReply::finished, this, [reply, callback] {
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray respBody = reply->readAll();
+        const bool ok = statusCode >= 200 && statusCode < 300;
+        callback(ok, respBody, ok ? QString() : extractErrorDetail(respBody));
+        reply->deleteLater();
+    });
+}
+
+void ApiClient::sendDelete(const QString& path, SimpleCallback callback) {
+    QNetworkRequest request(QUrl(serverUrl_ + path));
+    QNetworkReply* reply = netManager_->deleteResource(request);
+    connect(reply, &QNetworkReply::finished, this, [reply, callback] {
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray respBody = reply->readAll();
+        const bool ok = statusCode >= 200 && statusCode < 300;
+        callback(ok, ok ? QString() : extractErrorDetail(respBody));
+        reply->deleteLater();
+    });
+}
+
+ApiClient::RobotInfo ApiClient::parseRobot(const QJsonObject& o) {
+    RobotInfo r;
+    r.id = o.value(QStringLiteral("id")).toInt();
+    r.code = o.value(QStringLiteral("code")).toString();
+    r.name = o.value(QStringLiteral("name")).toString();
+    r.model = o.value(QStringLiteral("model")).toString();
+    r.ip = o.value(QStringLiteral("ip")).toString();
+    r.isOnline = o.value(QStringLiteral("is_online")).toBool();
+    r.isNavRunning = o.value(QStringLiteral("is_nav_running")).toBool();
+    return r;
+}
+
+void ApiClient::fetchRobots(ListCallback<RobotInfo> callback) {
+    getJsonArray(QStringLiteral("/robots"), [callback](bool ok, const QByteArray& body) {
+        QVector<RobotInfo> robots;
+        if (!ok) {
+            callback(false, robots);
+            return;
+        }
+        for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+            robots.append(parseRobot(v.toObject()));
+        }
+        callback(true, robots);
+    });
+}
+
+ApiClient::MapInfo ApiClient::parseMap(const QJsonObject& o) {
+    MapInfo m;
+    m.id = o.value(QStringLiteral("id")).toInt();
+    m.robotId = o.value(QStringLiteral("robot_id")).toInt();
+    m.robotCode = o.value(QStringLiteral("robot_code")).toString();
+    m.name = o.value(QStringLiteral("name")).toString();
+    m.recipientName = o.value(QStringLiteral("recipient_name")).toString();
+    m.isActive = o.value(QStringLiteral("is_active")).toBool();
+    m.imageFileId = o.value(QStringLiteral("image_file_id")).toInt();
+    m.imageUrl = o.value(QStringLiteral("image_url")).toString();
+    m.resolution = o.value(QStringLiteral("resolution")).toDouble(0.0);
+    m.originX = o.value(QStringLiteral("origin_x")).toDouble(0.0);
+    m.originY = o.value(QStringLiteral("origin_y")).toDouble(0.0);
+    return m;
+}
+
+void ApiClient::fetchActiveMaps(ListCallback<MapInfo> callback) {
+    getJsonArray(QStringLiteral("/maps/active"), [callback](bool ok, const QByteArray& body) {
+        QVector<MapInfo> maps;
+        if (!ok) {
+            callback(false, maps);
+            return;
+        }
+        for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+            maps.append(parseMap(v.toObject()));
+        }
+        callback(true, maps);
+    });
+}
+
+ApiClient::WaypointInfo ApiClient::parseWaypoint(const QJsonObject& o) {
+    WaypointInfo w;
+    w.id = o.value(QStringLiteral("id")).toInt();
+    w.mapId = o.value(QStringLiteral("map_id")).toInt();
+    w.code = o.value(QStringLiteral("code")).toString();
+    w.name = o.value(QStringLiteral("name")).toString();
+    w.kind = o.value(QStringLiteral("kind")).toString();
+    w.posX = o.value(QStringLiteral("pos_x")).toDouble();
+    w.posY = o.value(QStringLiteral("pos_y")).toDouble();
+    w.yaw = o.value(QStringLiteral("yaw")).toDouble();
+    return w;
+}
+
+void ApiClient::fetchWaypoints(int mapId, ListCallback<WaypointInfo> callback) {
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("map_id"), QString::number(mapId));
+    getJsonArray(QStringLiteral("/waypoints?") + query.toString(QUrl::FullyEncoded),
+                 [callback](bool ok, const QByteArray& body) {
+                     QVector<WaypointInfo> waypoints;
+                     if (!ok) {
+                         callback(false, waypoints);
+                         return;
+                     }
+                     for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+                         waypoints.append(parseWaypoint(v.toObject()));
+                     }
+                     callback(true, waypoints);
+                 });
+}
+
+void ApiClient::createWaypoint(int mapId, const QString& code, const QString& name, const QString& kind,
+                                double posX, double posY, double yawRad,
+                                ItemCallback<WaypointInfo> callback) {
+    QJsonObject body{{"map_id", mapId}, {"code", code},  {"name", name},
+                      {"kind", kind},   {"pos_x", posX}, {"pos_y", posY},
+                      {"yaw", yawRad}};
+    postJson(QStringLiteral("/waypoints"), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 callback(ok, ok ? parseWaypoint(QJsonDocument::fromJson(respBody).object()) : WaypointInfo{}, err);
+             });
+}
+
+void ApiClient::updateWaypoint(int waypointId, const QJsonObject& fields, ItemCallback<WaypointInfo> callback) {
+    putJson(QStringLiteral("/waypoints/%1").arg(waypointId), fields,
+            [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                callback(ok, ok ? parseWaypoint(QJsonDocument::fromJson(respBody).object()) : WaypointInfo{}, err);
+            });
+}
+
+void ApiClient::deleteWaypoint(int waypointId, SimpleCallback callback) {
+    sendDelete(QStringLiteral("/waypoints/%1").arg(waypointId), callback);
+}
+
+ApiClient::PatrolRouteInfo ApiClient::parsePatrolRoute(const QJsonObject& o) {
+    PatrolRouteInfo r;
+    r.id = o.value(QStringLiteral("id")).toInt();
+    r.mapId = o.value(QStringLiteral("map_id")).toInt();
+    r.name = o.value(QStringLiteral("name")).toString();
+    for (const QJsonValue& step : o.value(QStringLiteral("steps")).toArray()) {
+        r.steps.append(step.toInt());
+    }
+    return r;
+}
+
+void ApiClient::fetchPatrolRoutes(int mapId, ListCallback<PatrolRouteInfo> callback) {
+    QString path = QStringLiteral("/patrol-routes");
+    if (mapId > 0) {
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("map_id"), QString::number(mapId));
+        path += QStringLiteral("?") + query.toString(QUrl::FullyEncoded);
+    }
+    getJsonArray(path, [callback](bool ok, const QByteArray& body) {
+        QVector<PatrolRouteInfo> routes;
+        if (!ok) {
+            callback(false, routes);
+            return;
+        }
+        for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+            routes.append(parsePatrolRoute(v.toObject()));
+        }
+        callback(true, routes);
+    });
+}
+
+void ApiClient::createPatrolRoute(int mapId, const QString& name, const QVector<int>& steps,
+                                   ItemCallback<PatrolRouteInfo> callback) {
+    QJsonArray stepsArray;
+    for (int step : steps) stepsArray.append(step);
+    QJsonObject body{{"map_id", mapId}, {"name", name}, {"steps", stepsArray}};
+    postJson(QStringLiteral("/patrol-routes"), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 callback(ok, ok ? parsePatrolRoute(QJsonDocument::fromJson(respBody).object()) : PatrolRouteInfo{},
+                          err);
+             });
+}
+
+void ApiClient::updatePatrolRoute(int routeId, const QJsonObject& fields,
+                                   ItemCallback<PatrolRouteInfo> callback) {
+    putJson(QStringLiteral("/patrol-routes/%1").arg(routeId), fields,
+            [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                callback(ok, ok ? parsePatrolRoute(QJsonDocument::fromJson(respBody).object()) : PatrolRouteInfo{},
+                         err);
+            });
+}
+
+void ApiClient::deletePatrolRoute(int routeId, SimpleCallback callback) {
+    sendDelete(QStringLiteral("/patrol-routes/%1").arg(routeId), callback);
+}
+
+ApiClient::PatrolScheduleInfo ApiClient::parsePatrolSchedule(const QJsonObject& o) {
+    PatrolScheduleInfo s;
+    s.id = o.value(QStringLiteral("id")).toInt();
+    s.routeId = o.value(QStringLiteral("route_id")).toInt();
+    // 서버는 "HH:MM:SS"를 내려준다 — GUI 표시 형식("HH:mm")에 맞춰 초 단위를 자른다.
+    s.runTime = o.value(QStringLiteral("run_time")).toString().left(5);
+    s.daysOfWeek = o.value(QStringLiteral("days_of_week")).toInt();
+    s.enabled = o.value(QStringLiteral("enabled")).toBool(true);
+    s.medicationScheduleId = o.value(QStringLiteral("medication_schedule_id")).toInt(0);
+    return s;
+}
+
+void ApiClient::fetchPatrolSchedules(int routeId, ListCallback<PatrolScheduleInfo> callback) {
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("route_id"), QString::number(routeId));
+    getJsonArray(QStringLiteral("/patrol-schedules?") + query.toString(QUrl::FullyEncoded),
+                 [callback](bool ok, const QByteArray& body) {
+                     QVector<PatrolScheduleInfo> schedules;
+                     if (!ok) {
+                         callback(false, schedules);
+                         return;
+                     }
+                     for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+                         schedules.append(parsePatrolSchedule(v.toObject()));
+                     }
+                     callback(true, schedules);
+                 });
+}
+
+void ApiClient::createPatrolSchedule(int routeId, const QString& runTime, int daysOfWeek,
+                                      ItemCallback<PatrolScheduleInfo> callback, int medicationScheduleId) {
+    QJsonObject body{
+        {"route_id", routeId}, {"run_time", runTime + QStringLiteral(":00")}, {"days_of_week", daysOfWeek}};
+    if (medicationScheduleId > 0) body["medication_schedule_id"] = medicationScheduleId;
+    postJson(QStringLiteral("/patrol-schedules"), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 callback(ok,
+                          ok ? parsePatrolSchedule(QJsonDocument::fromJson(respBody).object())
+                             : PatrolScheduleInfo{},
+                          err);
+             });
+}
+
+void ApiClient::updatePatrolSchedule(int scheduleId, const QJsonObject& fields,
+                                      ItemCallback<PatrolScheduleInfo> callback) {
+    putJson(QStringLiteral("/patrol-schedules/%1").arg(scheduleId), fields,
+            [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                callback(ok,
+                         ok ? parsePatrolSchedule(QJsonDocument::fromJson(respBody).object())
+                            : PatrolScheduleInfo{},
+                         err);
+            });
+}
+
+void ApiClient::deletePatrolSchedule(int scheduleId, SimpleCallback callback) {
+    sendDelete(QStringLiteral("/patrol-schedules/%1").arg(scheduleId), callback);
+}
+
+ApiClient::SlamJobInfo ApiClient::parseSlamJob(const QJsonObject& o) {
+    SlamJobInfo job;
+    job.id = o.value(QStringLiteral("id")).toInt();
+    job.status = o.value(QStringLiteral("status")).toString();
+    job.robotConnected = o.value(QStringLiteral("robot_connected")).toBool();
+    return job;
+}
+
+void ApiClient::startSlamJob(const QString& robotCode, const QString& mapName,
+                              ItemCallback<SlamJobInfo> callback) {
+    QJsonObject body{{"robot_code", robotCode}, {"map_name", mapName}};
+    postJson(QStringLiteral("/slam-jobs"), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 if (!ok) {
+                     callback(false, SlamJobInfo{}, err);
+                     return;
+                 }
+                 callback(true, parseSlamJob(QJsonDocument::fromJson(respBody).object()), err);
+             });
+}
+
+void ApiClient::cancelSlamJob(int jobId, ItemCallback<SlamJobInfo> callback) {
+    postJson(QStringLiteral("/slam-jobs/%1/cancel").arg(jobId), QJsonObject{},
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 if (!ok) {
+                     callback(false, SlamJobInfo{}, err);
+                     return;
+                 }
+                 callback(true, parseSlamJob(QJsonDocument::fromJson(respBody).object()), err);
+             });
+}
+
+void ApiClient::saveSlamJob(int jobId, const QString& mapName, ItemCallback<SlamJobInfo> callback) {
+    QJsonObject body;
+    if (!mapName.trimmed().isEmpty()) {
+        body.insert(QStringLiteral("map_name"), mapName.trimmed());
+    }
+    postJson(QStringLiteral("/slam-jobs/%1/save").arg(jobId), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 if (!ok) {
+                     callback(false, SlamJobInfo{}, err);
+                     return;
+                 }
+                 callback(true, parseSlamJob(QJsonDocument::fromJson(respBody).object()), err);
+             });
+}
+
+void ApiClient::fetchSlamJobs(int robotId, const QString& status, ListCallback<SlamJobInfo> callback) {
+    QUrlQuery query;
+    if (robotId > 0) query.addQueryItem(QStringLiteral("robot_id"), QString::number(robotId));
+    if (!status.isEmpty()) query.addQueryItem(QStringLiteral("status"), status);
+    QString path = QStringLiteral("/slam-jobs");
+    if (!query.isEmpty()) path += QStringLiteral("?") + query.toString(QUrl::FullyEncoded);
+    getJsonArray(path, [callback](bool ok, const QByteArray& body) {
+        QVector<SlamJobInfo> jobs;
+        if (!ok) {
+            callback(false, jobs);
+            return;
+        }
+        for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+            jobs.append(parseSlamJob(v.toObject()));
+        }
+        callback(true, jobs);
+    });
+}
+
+void ApiClient::uploadMapFile(const QString& robotCode, const QString& pgmFilePath, ItemCallback<int> callback) {
+    auto* file = new QFile(pgmFilePath);
+    if (!file->open(QIODevice::ReadOnly)) {
+        delete file;
+        callback(false, 0, QStringLiteral("파일을 열 수 없습니다: %1").arg(pgmFilePath));
+        return;
+    }
+
+    auto* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+    QHttpPart robotCodePart;
+    robotCodePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                             QVariant(QStringLiteral("form-data; name=\"robot_code\"")));
+    robotCodePart.setBody(robotCode.toUtf8());
+    multiPart->append(robotCodePart);
+
+    QHttpPart filePart;
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("application/octet-stream")));
+    filePart.setHeader(
+        QNetworkRequest::ContentDispositionHeader,
+        QVariant(QStringLiteral("form-data; name=\"file\"; filename=\"%1\"").arg(QFileInfo(pgmFilePath).fileName())));
+    file->setParent(multiPart);
+    filePart.setBodyDevice(file);
+    multiPart->append(filePart);
+
+    QNetworkRequest request(QUrl(serverUrl_ + QStringLiteral("/media/upload-map")));
+    QNetworkReply* reply = netManager_->post(request, multiPart);
+    multiPart->setParent(reply);
+    connect(reply, &QNetworkReply::finished, this, [reply, callback] {
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray respBody = reply->readAll();
+        const bool ok = statusCode >= 200 && statusCode < 300;
+        if (!ok) {
+            const QJsonObject o = QJsonDocument::fromJson(respBody).object();
+            const QString detail = o.contains(QStringLiteral("detail")) ? o.value(QStringLiteral("detail")).toString()
+                                                                          : QString::fromUtf8(respBody);
+            callback(false, 0, detail);
+        } else {
+            const QJsonObject o = QJsonDocument::fromJson(respBody).object();
+            callback(true, o.value(QStringLiteral("file_id")).toInt(), QString());
+        }
+        reply->deleteLater();
+    });
+}
+
+void ApiClient::createMap(const MapCreateParams& params, ItemCallback<MapInfo> callback) {
+    const QJsonObject body{
+        {QStringLiteral("robot_code"), params.robotCode},
+        {QStringLiteral("map_name"), params.mapName},
+        {QStringLiteral("file_id"), params.fileId},
+        {QStringLiteral("resolution"), params.resolution},
+        {QStringLiteral("origin_x"), params.originX},
+        {QStringLiteral("origin_y"), params.originY},
+        {QStringLiteral("origin_yaw"), params.originYaw},
+        {QStringLiteral("width_px"), params.widthPx},
+        {QStringLiteral("height_px"), params.heightPx},
+        {QStringLiteral("raw_yaml"), params.rawYaml},
+    };
+    postJson(QStringLiteral("/maps"), body, [callback](bool ok, const QByteArray& respBody, const QString& err) {
+        if (!ok) {
+            callback(false, MapInfo{}, err);
+            return;
+        }
+        callback(true, parseMap(QJsonDocument::fromJson(respBody).object()), err);
+    });
+}
+
+void ApiClient::deleteMap(int mapId, SimpleCallback callback) {
+    sendDelete(QStringLiteral("/maps/%1").arg(mapId), callback);
+}
+
+ApiClient::PatrolRunInfo ApiClient::parsePatrolRun(const QJsonObject& o) {
+    PatrolRunInfo run;
+    run.id = o.value(QStringLiteral("id")).toInt();
+    run.robotId = o.value(QStringLiteral("robot_id")).toInt();
+    run.status = o.value(QStringLiteral("status")).toString();
+    run.trigger = o.value(QStringLiteral("trigger")).toString();
+    run.waypointsTotal = o.value(QStringLiteral("waypoints_total")).toInt();
+    run.waypointsDone = o.value(QStringLiteral("waypoints_done")).toInt();
+    run.robotConnected = o.value(QStringLiteral("robot_connected")).toBool();
+    return run;
+}
+
+void ApiClient::startPatrolRun(int robotId, int routeId, const QString& trigger,
+                                ItemCallback<PatrolRunInfo> callback) {
+    QJsonObject body{{"robot_id", robotId}, {"route_id", routeId}, {"trigger", trigger}};
+    postJson(QStringLiteral("/patrol-runs"), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 if (!ok) {
+                     callback(false, PatrolRunInfo{}, err);
+                     return;
+                 }
+                 callback(true, parsePatrolRun(QJsonDocument::fromJson(respBody).object()), err);
+             });
+}
+
+void ApiClient::fetchPatrolRuns(int robotId, const QString& status, ListCallback<PatrolRunInfo> callback) {
+    QUrlQuery query;
+    if (robotId > 0) query.addQueryItem(QStringLiteral("robot_id"), QString::number(robotId));
+    if (!status.isEmpty()) query.addQueryItem(QStringLiteral("status"), status);
+    QString path = QStringLiteral("/patrol-runs");
+    if (!query.isEmpty()) path += QStringLiteral("?") + query.toString(QUrl::FullyEncoded);
+    getJsonArray(path, [callback](bool ok, const QByteArray& body) {
+        QVector<PatrolRunInfo> runs;
+        if (!ok) {
+            callback(false, runs);
+            return;
+        }
+        for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+            runs.append(parsePatrolRun(v.toObject()));
+        }
+        callback(true, runs);
+    });
+}
+
+void ApiClient::startMedicationMission(const QString& robotCode, int slotNo,
+                                        ItemCallback<MissionInfo> callback) {
+    QJsonObject body{
+        {"robot_code", robotCode}, {"kind", QStringLiteral("medication")}, {"slot_no", slotNo}};
+    postJson(QStringLiteral("/missions"), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 if (!ok) {
+                     callback(false, MissionInfo{}, err);
+                     return;
+                 }
+                 const QJsonObject o = QJsonDocument::fromJson(respBody).object();
+                 MissionInfo mission;
+                 mission.id = o.value(QStringLiteral("id")).toInt();
+                 mission.status = o.value(QStringLiteral("status")).toString();
+                 mission.robotConnected = o.value(QStringLiteral("robot_connected")).toBool();
+                 callback(true, mission, err);
+             });
+}
+
+ApiClient::RecipientInfo ApiClient::parseRecipient(const QJsonObject& o) {
+    RecipientInfo r;
+    r.id = o.value(QStringLiteral("id")).toInt();
+    r.code = o.value(QStringLiteral("code")).toString();
+    r.name = o.value(QStringLiteral("name")).toString();
+    r.robotId = o.value(QStringLiteral("robot_id")).toInt();
+    r.robotCode = o.value(QStringLiteral("robot_code")).toString();
+    r.gender = o.value(QStringLiteral("gender")).toString();
+    r.birthDate = o.value(QStringLiteral("birth_date")).toString();
+    r.phone = o.value(QStringLiteral("phone")).toString();
+    r.homeAddress = o.value(QStringLiteral("home_address")).toString();
+    r.diseases = o.value(QStringLiteral("diseases")).toString();
+    r.note = o.value(QStringLiteral("note")).toString();
+    r.operatorId = o.value(QStringLiteral("operator_id")).toInt();
+    r.operatorName = o.value(QStringLiteral("operator_name")).toString();
+    r.level = o.value(QStringLiteral("level")).toString(QStringLiteral("normal"));
+    r.statusSummary = o.value(QStringLiteral("status_summary")).toString();
+    for (const QJsonValue& v : o.value(QStringLiteral("meds_today")).toArray()) {
+        const QJsonObject m = v.toObject();
+        MedicationTodayInfo info;
+        info.slotNo = m.value(QStringLiteral("slot_no")).toInt();
+        info.state = m.value(QStringLiteral("state")).toString();
+        r.medsToday.append(info);
+    }
+    return r;
+}
+
+ApiClient::RecipientDetailInfo ApiClient::parseRecipientDetail(const QJsonObject& o) {
+    RecipientDetailInfo d;
+    d.recipient = parseRecipient(o);
+    for (const QJsonValue& v : o.value(QStringLiteral("guardians")).toArray()) {
+        const QJsonObject g = v.toObject();
+        GuardianInfo info;
+        info.id = g.value(QStringLiteral("id")).toInt();
+        info.name = g.value(QStringLiteral("name")).toString();
+        info.phone = g.value(QStringLiteral("phone")).toString();
+        info.email = g.value(QStringLiteral("email")).toString();
+        info.relation = g.value(QStringLiteral("relation")).toString();
+        info.priority = g.value(QStringLiteral("priority")).toInt();
+        info.notifyEnabled = g.value(QStringLiteral("notify_enabled")).toBool(true);
+        info.userId = g.value(QStringLiteral("user_id")).toInt();
+        d.guardians.append(info);
+    }
+    for (const QJsonValue& v : o.value(QStringLiteral("schedules")).toArray()) {
+        const QJsonObject s = v.toObject();
+        MedicationScheduleInfo info;
+        info.id = s.value(QStringLiteral("id")).toInt();
+        info.slotNo = s.value(QStringLiteral("slot_no")).toInt();
+        info.drugName = s.value(QStringLiteral("drug_name")).toString();
+        // 서버는 "HH:MM:SS"를 내려준다 — patrol-schedules와 동일하게 초 단위를 자른다.
+        info.doseTime = s.value(QStringLiteral("dose_time")).toString().left(5);
+        info.daysOfWeek = s.value(QStringLiteral("days_of_week")).toInt(127);
+        d.schedules.append(info);
+    }
+    for (const QJsonValue& v : o.value(QStringLiteral("history")).toArray()) {
+        const QJsonObject h = v.toObject();
+        MedicationHistoryInfo info;
+        info.date = h.value(QStringLiteral("date")).toString();
+        info.adherence = h.value(QStringLiteral("adherence")).toDouble(-1.0);
+        d.history.append(info);
+    }
+    return d;
+}
+
+void ApiClient::fetchRecipients(ListCallback<RecipientInfo> callback, int guardianUserId) {
+    QString path = QStringLiteral("/recipients");
+    if (guardianUserId > 0) path += QStringLiteral("?guardian_user_id=%1").arg(guardianUserId);
+    getJsonArray(path, [callback](bool ok, const QByteArray& body) {
+        QVector<RecipientInfo> recipients;
+        if (!ok) {
+            callback(false, recipients);
+            return;
+        }
+        for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+            recipients.append(parseRecipient(v.toObject()));
+        }
+        callback(true, recipients);
+    });
+}
+
+void ApiClient::fetchRecipientDetail(int recipientId, ItemCallback<RecipientDetailInfo> callback) {
+    getJsonArray(QStringLiteral("/recipients/%1").arg(recipientId), [callback](bool ok, const QByteArray& body) {
+        if (!ok) {
+            callback(false, RecipientDetailInfo{}, QString());
+            return;
+        }
+        callback(true, parseRecipientDetail(QJsonDocument::fromJson(body).object()), QString());
+    });
+}
+
+namespace {
+// server/app/schemas.py::RecipientCreate 대응 JSON — POST(등록)/PUT(수정) 둘 다 모양이
+// 같아서 본문 구성만 공유한다.
+QJsonObject recipientBodyFromParams(const ApiClient::RecipientCreateParams& params) {
+    QJsonArray guardians;
+    for (const auto& g : params.guardians) {
+        QJsonObject gj{{"name", g.name},
+                        {"phone", g.phone},
+                        {"email", g.email},
+                        {"relation", g.relation},
+                        {"priority", g.priority},
+                        {"notify_enabled", g.notifyEnabled}};
+        // id가 있는(기존) 보호자만 실어 보낸다 — 서버는 id 없으면 신규로 INSERT한다
+        // (schemas.py::GuardianCreate.id, Optional). 신규 행에 0을 보내는 것보다
+        // 키 자체를 생략하는 쪽이 "새 보호자"라는 의미를 그대로 전달한다.
+        if (g.id > 0) gj.insert(QStringLiteral("id"), g.id);
+        // userId==0이면 안 보낸다 — GuardianCreate.user_id가 None으로 남아 "연결 없음"으로
+        // 저장된다. UI에서 새로 값을 넣을 수단은 없고, fetchRecipientDetail로 받아온 기존
+        // 값을 그대로 되돌려 보내는 round-trip 용도다(안 하면 대상자 정보를 수정할 때마다
+        // 로그인 계정 연동이 끊겼다).
+        if (g.userId > 0) gj["user_id"] = g.userId;
+        guardians.append(gj);
+    }
+    QJsonArray schedules;
+    for (const auto& s : params.schedules) {
+        schedules.append(QJsonObject{{"slot_no", s.slotNo},
+                                      {"drug_name", s.drugName},
+                                      {"dose_time", s.doseTime},
+                                      {"days_of_week", s.daysOfWeek}});
+    }
+
+    QJsonObject body{
+        {"name", params.name},
+        {"phone", params.phone},
+        {"home_address", params.homeAddress},
+        {"diseases", params.diseases},
+        {"note", params.note},
+        {"guardians", guardians},
+        {"schedules", schedules},
+    };
+    if (!params.gender.isEmpty()) body.insert(QStringLiteral("gender"), params.gender);
+    if (!params.birthDate.isEmpty()) body.insert(QStringLiteral("birth_date"), params.birthDate);
+    if (!params.robotCode.isEmpty()) body.insert(QStringLiteral("robot_code"), params.robotCode);
+    if (params.operatorId > 0) body.insert(QStringLiteral("operator_id"), params.operatorId);
+    return body;
+}
+}  // namespace
+
+void ApiClient::createRecipient(const RecipientCreateParams& params, ItemCallback<RecipientDetailInfo> callback) {
+    postJson(QStringLiteral("/recipients"), recipientBodyFromParams(params),
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 if (!ok) {
+                     callback(false, RecipientDetailInfo{}, err);
+                     return;
+                 }
+                 callback(true, parseRecipientDetail(QJsonDocument::fromJson(respBody).object()), err);
+             });
+}
+
+void ApiClient::updateRecipient(int recipientId, const RecipientCreateParams& params,
+                                 ItemCallback<RecipientDetailInfo> callback) {
+    putJson(QStringLiteral("/recipients/%1").arg(recipientId), recipientBodyFromParams(params),
+            [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                if (!ok) {
+                    callback(false, RecipientDetailInfo{}, err);
+                    return;
+                }
+                callback(true, parseRecipientDetail(QJsonDocument::fromJson(respBody).object()), err);
+            });
+}
+
+void ApiClient::deactivateRecipient(int recipientId, SimpleCallback callback) {
+    postJson(QStringLiteral("/recipients/%1/deactivate").arg(recipientId), QJsonObject{},
+             [callback](bool ok, const QByteArray&, const QString& err) { callback(ok, err); });
+}
+
+void ApiClient::sendGuardianMail(int recipientId, const QString& toEmail, const QString& message,
+                                  SimpleCallback callback) {
+    QJsonObject body{{"to_email", toEmail}, {"message", message}};
+    postJson(QStringLiteral("/recipients/%1/guardian-mail").arg(recipientId), body,
+             [callback](bool httpOk, const QByteArray& respBody, const QString& err) {
+                 // HTTP 200이어도 실제 발송이 실패(SMTP 오류)했을 수 있어 응답 본문의
+                 // ok/error를 봐야 한다 — startCall의 robot_connected와 같은 패턴.
+                 if (!httpOk) {
+                     callback(false, err);
+                     return;
+                 }
+                 const QJsonObject o = QJsonDocument::fromJson(respBody).object();
+                 const bool sendOk = o.value(QStringLiteral("ok")).toBool();
+                 callback(sendOk, sendOk ? QString() : o.value(QStringLiteral("error")).toString());
+             });
+}
+
+void ApiClient::fetchOperators(ListCallback<OperatorInfo> callback) {
+    getJsonArray(QStringLiteral("/accounts"), [callback](bool ok, const QByteArray& body) {
+        QVector<OperatorInfo> operators;
+        if (!ok) {
+            callback(false, operators);
+            return;
+        }
+        for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+            const QJsonObject o = v.toObject();
+            if (o.value(QStringLiteral("role_code")).toString() != QStringLiteral("operator")) continue;
+            if (!o.value(QStringLiteral("is_active")).toBool()) continue;
+            OperatorInfo info;
+            info.id = o.value(QStringLiteral("id")).toInt();
+            info.name = o.value(QStringLiteral("display_name")).toString();
+            operators.append(info);
+        }
+        callback(true, operators);
+    });
+}
+
+void ApiClient::driveToPoint(const QString& robotCode, int mapId, const QString& code, double xMeters,
+                              double yMeters, double yawRad, SimpleCallback callback) {
+    QJsonObject body{{"robot_code", robotCode}, {"map_id", mapId},   {"code", code},
+                      {"x", xMeters},           {"y", yMeters},     {"yaw", yawRad}};
+    postJson(QStringLiteral("/patrol-runs/drive-to-point"), body,
+             [callback](bool ok, const QByteArray&, const QString& err) { callback(ok, err); });
+}
+
+void ApiClient::cancelPatrolRun(const QString& robotCode, SimpleCallback callback) {
+    QJsonObject body{{"robot_code", robotCode}};
+    postJson(QStringLiteral("/patrol-runs/cancel"), body,
+             [callback](bool ok, const QByteArray&, const QString& err) { callback(ok, err); });
+}
+
+void ApiClient::startCall(const QString& robotCode, const QString& callerName, CallCallback callback) {
+    QJsonObject body{{"robot_code", robotCode}, {"caller_name", callerName}};
+    postJson(QStringLiteral("/calls/start"), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 const bool robotConnected =
+                     ok && QJsonDocument::fromJson(respBody).object().value("robot_connected").toBool();
+                 callback(ok, robotConnected, err);
+             });
+}
+
+void ApiClient::endCall(const QString& robotCode, CallCallback callback) {
+    QJsonObject body{{"robot_code", robotCode}};
+    postJson(QStringLiteral("/calls/end"), body,
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 const bool robotConnected =
+                     ok && QJsonDocument::fromJson(respBody).object().value("robot_connected").toBool();
+                 callback(ok, robotConnected, err);
+             });
+}
+
+void ApiClient::startEmergencyReport(const QString& robotCode, const QString& reporterName,
+                                      EmergencyReportCallback callback) {
+    QJsonObject body{{"robot_code", robotCode}, {"reporter_name", reporterName}};
+    postJson(QStringLiteral("/emergency-reports/start"), body,
+             [callback](bool ok, const QByteArray&, const QString& err) { callback(ok, err); });
+}
+
+void ApiClient::endEmergencyReport(const QString& robotCode, EmergencyReportCallback callback) {
+    QJsonObject body{{"robot_code", robotCode}};
+    postJson(QStringLiteral("/emergency-reports/end"), body,
+             [callback](bool ok, const QByteArray&, const QString& err) { callback(ok, err); });
+}
+
+void ApiClient::prepareNavigation(const QString& robotCode, int mapId) {
+    QJsonObject body{{"robot_code", robotCode}, {"map_id", mapId}};
+    postJson(QStringLiteral("/patrol-runs/prepare-navigation"), body,
+             [](bool, const QByteArray&, const QString&) {});
+}
+
+void ApiClient::setInitialPose(const QString& robotCode, int mapId, double xMeters, double yMeters, double yawRad,
+                                SimpleCallback callback) {
+    QJsonObject body{{"robot_code", robotCode}, {"map_id", mapId}, {"x", xMeters}, {"y", yMeters}, {"yaw", yawRad}};
+    postJson(QStringLiteral("/patrol-runs/set-initial-pose"), body,
+             [callback](bool ok, const QByteArray&, const QString& err) { callback(ok, err); });
+}
+
+void ApiClient::shutdownRobot(const QString& robotCode, SimpleCallback callback) {
+    QJsonObject body{{"robot_code", robotCode}};
+    postJson(QStringLiteral("/patrol-runs/shutdown-robot"), body,
+             [callback](bool ok, const QByteArray&, const QString& err) { callback(ok, err); });
+}
+
+void ApiClient::sendTeleop(const QString& robotCode, double linearMps, double angularRadps) {
+    // 방향키를 누르고 있는 동안 계속 호출되는 hot path라 응답을 기다리지 않는다 —
+    // 실패해도(로봇 미연결 등) 조용히 무시한다. 위험 상황은 SlamMappingCard의
+    // 비상정지가 별도로 처리한다.
+    QJsonObject body{{"linear", linearMps}, {"angular", angularRadps}};
+    postJson(QStringLiteral("/teleop/%1").arg(robotCode), body, [](bool, const QByteArray&, const QString&) {});
+}
+
+ApiClient::EventInfo ApiClient::parseEvent(const QJsonObject& o) {
+    EventInfo e;
+    e.eventUid = o.value(QStringLiteral("event_uid")).toString();
+    e.severity = o.value(QStringLiteral("severity")).toString();
+    e.eventType = o.value(QStringLiteral("event_type")).toString();
+    e.eventTypeLabel = o.value(QStringLiteral("event_type_label")).toString();
+    e.summary = o.value(QStringLiteral("summary")).toString();
+    e.occurredAt = parseIsoDateTime(o.value(QStringLiteral("occurred_at")).toString());
+    e.resolved = o.value(QStringLiteral("resolved")).toBool();
+    e.robotCode = o.value(QStringLiteral("robot_code")).toString();
+    e.recipientName = o.value(QStringLiteral("recipient_name")).toString();
+    return e;
+}
+
+void ApiClient::fetchEvents(ListCallback<EventInfo> callback) {
+    getJsonArray(QStringLiteral("/events"), [callback](bool ok, const QByteArray& body) {
+        QVector<EventInfo> events;
+        if (!ok) {
+            callback(false, events);
+            return;
+        }
+        for (const QJsonValue& v : QJsonDocument::fromJson(body).array()) {
+            events.append(parseEvent(v.toObject()));
+        }
+        callback(true, events);
+    });
+}
+
+void ApiClient::resolveEvent(const QString& eventUid, ItemCallback<EventInfo> callback) {
+    postJson(QStringLiteral("/events/%1/resolve").arg(eventUid), QJsonObject{},
+             [callback](bool ok, const QByteArray& respBody, const QString& err) {
+                 if (!ok) {
+                     callback(false, EventInfo{}, err);
+                     return;
+                 }
+                 callback(true, parseEvent(QJsonDocument::fromJson(respBody).object()), err);
+             });
+}

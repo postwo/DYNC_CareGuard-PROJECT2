@@ -1,0 +1,108 @@
+# 로봇 후면 상태 화면 (kiosk)
+
+로봇 뒷면 7인치 모니터에 띄우는 최소 상태 화면. 빌드 없이 `index.html`을 브라우저로
+열면 끝 — 기존 `/ws/dashboard`, `GET /robots/{id}/thresholds`, `GET /patrol-runs`에
+더해 통화/119 신고 상태 조회용 `GET /calls/status`, `GET /emergency-reports/status`
+(2026-09-17 추가, `caller_name`/`reporter_name` 인메모리 레지스트리 그대로 노출)를
+사용한다.
+
+## 실제로 나오는 화면
+
+- 평소: 배터리 %(초록, 크게) + "대기 중" / "순찰 중" 배지 + 온라인 표시 + 시각
+- 배터리가 임계값(기본 30%, `battery_attention_pct`) 이하: 전부 빨간 계열로 바뀌고
+  배지가 "충전 필요 · 복귀 중"으로 전환
+- 화면이 서버와 끊기면 배지 대신 "서버 연결 끊김 · 재연결 중"이 뜨고, 3초 간격으로
+  자동 재접속을 시도한다(끊긴 동안 마지막 온라인/오프라인 상태를 그대로 보여주지
+  않도록, 재연결 전까지는 "온라인"이라고 단정하지 않는다).
+- 대시보드 이벤트 상세 모달에서 "스피커 통화"를 시작하면(`call_started`, 파란 계열)
+  "OOO님과 통화중"으로, "119 모의 신고"를 시작하면(`emergency_report_started`, 빨간
+  계열·펄스) "보호자가 119 신고중"으로 배지가 바뀐다. 둘 다 배터리 상태보다 우선
+  표시되고, 종료 이벤트(`call_ended`/`emergency_report_ended`)를 받으면 원래 배지로
+  돌아간다. 순찰 상태(`loadPatrolState`)와 같은 패턴으로, 첫 로드 시와 WS 재연결 시
+  `GET /calls/status`·`GET /emergency-reports/status`를 다시 불러 재조회하므로
+  화면이 통화/신고 도중 끊겼다 재연결돼도 놓친 브로드캐스트를 따라잡는다.
+
+## 요구사항 스펙과 실제 백엔드가 다른 부분 (백엔드 새로 안 만들기로 한 결과)
+
+애초 요청한 `patrol_start` / `patrol_stop` / `dock_result` WS 메시지 타입은
+`dashboard_ws.py`가 실제로 broadcast하는 목록에 없다(전수 검색 확인, 2026-09-15
+기준). 새 엔드포인트를 만들지 않기로 한 범위 안에서 아래처럼 대체했다:
+
+| 요청했던 것 | 실제로 쓴 것 | 비고 |
+|---|---|---|
+| `patrol_start` | `patrol_progress` 수신 시 순찰 중으로 간주 | `patrol_progress`는 순찰 중에만 온다 |
+| `patrol_stop` | `patrol_done` 수신 시 정지로 간주, `patrol_run_updated` 수신 시 재조회 | `patrol_run_updated`는 취소뿐 아니라 **순찰 시작 시점**과 SOS가 기존 순찰을 paused로 미룰 때도 broadcast된다(2026-09-15 코드 확인, `_start_patrol_run`/`cancel_patrol_run`/`drive_to_point` 세 곳 전부) — 방향을 이 메시지만으로 알 수 없어서, 값을 추측하는 대신 `GET /patrol-runs?status=running`을 다시 호출해 실제 상태를 가져온다(다른 대시보드 페이지들과 같은 패턴) |
+| (첫 진입 시 순찰 중 여부) | `GET /patrol-runs?robot_id=&status=running` | WS 쪽엔 순찰 시작/종료에 대한 hydration이 없어서, 화면을 새로 켰을 때 "이미 순찰 중"인지 알 방법이 이 기존 엔드포인트(P6가 새로고침 시 쓰는 것과 동일)뿐이었다. 이 쿼리는 `paused`(SOS가 잠시 밀어낸 순찰)도 `running`으로 같이 잡아준다(`api/v1/patrol.py::list_patrol_runs` 문서 참고) |
+| `dock_result` | (사용 안 함) | 이 타입 자체가 백엔드에 없다. 저배터리 자동 복귀는 서버가 로봇에게 직접 명령만 보내고(`robot_ws.py::_handle_battery_state`) 대시보드로는 알리지 않는다. 다행히 요구사항 4번 문구("배터리 부족 시... 복귀 중으로 전환")가 이미 배터리 %만으로 판단하는 로직이라, 이 화면은 `dock_result` 없이도 스펙대로 동작한다 |
+
+## 인증 없음
+
+`GET /robots/{id}/thresholds`, `GET /patrol-runs` 둘 다 이 브랜치(develop 기반)엔
+인증 자체가 없다 — 세션 토큰 방식은 채택하지 않기로 결정됐고(역할별 구분은 로그인
+정보 기준으로 대시보드 화면만 다르게 구성하는 것으로 정리됨), `core/auth.py`가 이
+브랜치엔 아예 없다(`api/v1/robots.py`/`api/v1/patrol.py`에 `Depends`/`require_roles`
+없음, 직접 확인). 그래서 이 페이지는 토큰을 전혀 다루지 않는다 — 헤더 없이 그냥
+호출한다.
+
+## 설정
+
+전부 URL 쿼리 파라미터로 넘긴다 (파일 상단 `CONFIG` 기본값을 직접 고쳐도 됨):
+
+```
+index.html?robot=R-01&robot_id=1&server=http://192.168.230.7:8000
+```
+
+- `robot` — `dashboard_ws` 메시지의 `robot_code`와 매칭할 값 (기본 `R-01`)
+- `robot_id` — thresholds/patrol-runs 조회에 쓸 숫자 DB id (기본 `1`)
+- `server` — 서버 주소. `dashboard/.env`의 `CAREGUARD_SERVER_URL`과 같은 값
+
+## 로봇에서 풀스크린(kiosk)으로 띄우기
+
+로봇 온보드 PC(wego@192.168.230.42)엔 Chrome/Chromium이 없고 원래 **Firefox만
+설치돼 있었다**(2026-09-16 확인, `chromium-browser: command not found`). Firefox는
+멀티프로세스 구조라 이 정적 페이지 하나 띄우는 데도 프로세스 12개·RAM 1.3GB를
+먹는데, 이 Jetson은 안 그래도 여유 메모리가 350MB 수준·load average가 코어 6개
+기준 5.0으로 이미 빠듯해서(2026-09-16 실측) 순찰 등 다른 작업과 상시 동시 실행하기엔
+부담이 컸다. 그래서 **`epiphany-browser`(WebKitGTK 기반, GNOME 기본 브라우저)로
+교체 설치**했다(`sudo apt install epiphany-browser`, 2026-09-16) — 같은 페이지를
+훨씬 적은 프로세스/메모리로 띄울 수 있다.
+
+```bash
+mkdir -p /tmp/careguard-kiosk-profile   # --application-mode는 프로필 디렉토리가
+                                         # 미리 존재해야 한다(없으면 바로 에러)
+epiphany --application-mode --profile=/tmp/careguard-kiosk-profile \
+  "file:///home/wego/careguard_kiosk/robot_kiosk/index.html?robot=R-01&robot_id=1&server=http://192.168.230.7:8000"
+```
+
+떠 있는 창에서 **F11**을 한 번 눌러 전체화면으로 전환한다 (epiphany엔 Firefox
+`--kiosk`에 대응하는 플래그가 없고, `wmctrl`/`xdotool`도 로봇에 안 깔려 있어서
+전체화면 전환을 스크립트로 자동화하진 못했다 — 필요하면 나중에 설치해서 자동화 가능).
+
+- `--application-mode`(`-a`): 주소창/탭 없는 웹앱 스타일 창
+- `--profile=/tmp/careguard-kiosk-profile`: Firefox `--incognito`와 같은 목적 —
+  매번 깨끗한 프로필로 시작(캐시된 옛날 화면 방지)
+- 부팅 시 자동 실행하려면 이 명령을 `~/.config/autostart/careguard-kiosk.desktop`
+  같은 autostart 항목이나 systemd user service로 등록
+- `file://`로 직접 열어도 되고, 원한다면 로봇 PC에서 `python3 -m http.server`로
+  이 폴더를 서빙해 `http://localhost:8080/index.html?...`로 열어도 된다(둘 다
+  동일하게 동작 — `fetch`/`WebSocket` 대상은 `server` 파라미터가 결정하므로 이
+  폴더를 어디서 서빙하는지와 무관함)
+- `server` 파라미터의 IP는 관제 PC(`pastel`, `pc_careguard/dashboard/.env`의
+  `CAREGUARD_SERVER_URL`)가 DHCP로 바뀔 때마다 같이 바뀔 수 있다 — 화면이 "서버
+  연결 끊김"에 멈춰 있으면 가장 먼저 이 IP가 최신인지부터 의심할 것
+  (2026-09-16: 옛 기본값 `192.168.230.13`이 이미 stale해서 한 번 이 문제로 헤맴)
+- 종료: 전체화면에서 `F11`로 빠져나온 뒤 창 닫기, 또는 SSH로 `pkill -f epiphany`.
+  (예전 Firefox 방식일 땐 NoMachine 세션에서 `Alt+F4`가 NoMachine 클라이언트
+  창만 닫고 원격 세션 안 브라우저엔 전달 안 되는 문제가 있었다 — epiphany도
+  같은 NoMachine 제약이 있을 수 있으니 Alt+F4 대신 `pkill`을 우선 시도할 것)
+- kiosk 자체(브라우저)는 서버와 HTTP/WS로만 통신하고 ROS2 DDS(`/cmd_vel`, 순찰
+  명령 등)와는 통신 경로가 완전히 분리돼 있어 로봇 명령 자체를 막지는 않는다 —
+  다만 온보드 리소스를 같이 쓰므로, 부담을 줄이려고 Firefox 대신 epiphany를
+  쓰기로 한 것
+
+## 참고: 목업 이미지에 대해
+
+요청에 첨부됐다는 목업 두 장은 이 세션에서 실제로 전달받지 못했다(첨부 파일 없음).
+그래서 레이아웃은 요구사항 4번 텍스트 설명(배터리 %는 크게, 상태 배지, 온라인 표시,
+시각, 평소 초록/경고 빨강)만으로 구성했다 — 실물 목업과 다르면 알려주면 맞춰
+수정한다.

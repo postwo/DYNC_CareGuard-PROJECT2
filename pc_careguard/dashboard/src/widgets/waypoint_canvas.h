@@ -1,0 +1,287 @@
+#pragma once
+#include <QFrame>
+#include <QVector>
+#include <QPointF>
+#include <QString>
+#include <QImage>
+
+class QMouseEvent;
+class QWheelEvent;
+class QPaintEvent;
+class QResizeEvent;
+class QShowEvent;
+class QContextMenuEvent;
+class CameraLiveView;
+
+// P6 웨이포인트 편집 캔버스 — p6_patrol_route_wireframe.html의 <svg> 영역.
+// addWaypointMode()가 켜져 있을 때만 빈 곳 드래그로 웨이포인트를 추가한다(방향
+// 지정) — 꺼져 있으면 빈 곳 드래그는 패닝이다. 마커를 클릭하면 편집 팝오버가 열린다
+// (WaypointPopover의 "경로 이동" 버튼이 실제 주행 요청을 담당한다 — 이 캔버스
+// 자신은 더 이상 클릭만으로 주행을 요청하지 않는다) — addWaypointMode()와 무관하게
+// 항상 가능하다. 기존 웨이포인트의 위치/방향을 바꾸는 건 마커를 직접 드래그하는
+// 게 아니라, 그 팝오버가 "편집" 모드로 켜는 setWaypointCaptureMode로 한다("위치
+// 보정"(AMCL 초기 위치)과 완전히 같은 클릭+드래그 방식). 우클릭으로 삭제. 경로
+// 편집 모드에서는 클릭 순서대로 웨이포인트를 골라 경로를 구성한다(충전 스테이션은
+// 클릭 불가 — 자동 출발·복귀 전용이라 경로 순서와 무관하다. 긴급 버튼은 patrol과
+// 동일하게 경로에 포함할 수 있다). 마우스 휠로 확대/축소, 휠 버튼(가운데 클릭) 드래그로 화면 이동,
+// 마커 밖 더블클릭으로 보기 초기화.
+class WaypointCanvas : public QFrame {
+    Q_OBJECT
+public:
+    struct Waypoint {
+        QString id;
+        QString name;
+        // "patrol"(순찰 지점) / "charge"(충전 스테이션, 맵당 1개) / "emergency"(긴급
+        // 버튼 위치, 맵당 여러 개 가능) — 셋 다 patrol_route.steps에는 charge/emergency
+        // 둘 다 들어가지 않는다(자동 출발·복귀 vs 즉시 단독 이동, 둘 다 "경로 순서"라는
+        // 개념과 무관하다).
+        QString kind = QStringLiteral("patrol");
+        QPointF pos;     // 캔버스 논리 좌표
+        qreal yawDeg = 0.0;
+        // 서버에서 받은 실제 map 프레임 미터 좌표(map.resolution/origin_x/origin_y
+        // 기준) — P6PatrolPage::loadServerMapImageDone만 채운다. showEvent()가 이
+        // 위젯이 처음으로 유효한 실제 크기를 갖게 되는 시점에 pos를 이 값으로부터
+        // 다시 정확히 계산하는 데 쓴다. 그 전까지(맵을 아직 한 번도 안 보여준 상태로
+        // 서버 데이터가 비동기로 먼저 도착하면) pos는 그 시점의 위젯 크기가 아직
+        // 확정되지 않아 잘못 계산됐을 수 있다 — 실제로 겪은 버그(2026-09-08): 웨이포인트가
+        // 화면 왼쪽 위 구석에 뭉쳐 보임. 로컬에서 직접 추가/편집한 웨이포인트는 이미
+        // 화면이 떠 있는 상태에서만 만들어지므로(그 위젯의 showEvent가 이미 지난 뒤라
+        // 이 재계산 경로를 다시 타지 않는다) 기본값(0,0)으로 둬도 문제없다.
+        QPointF metersPos;
+    };
+
+    explicit WaypointCanvas(QWidget* parent = nullptr);
+
+    void setWaypoints(const QVector<Waypoint>& wps);
+    QVector<Waypoint> waypoints() const { return waypoints_; }
+    const Waypoint* findWaypoint(const QString& id) const;
+
+    // 현재 선택된 경로(순서대로)를 점선 미리보기로 그린다.
+    void setRoutePreview(const QVector<QString>& orderedIds);
+
+    void setRouteEditMode(bool on);
+    // 경로 편집 모드에서 지금까지 클릭으로 고른 순서.
+    void setRouteEditSelection(const QVector<QString>& orderedIds);
+
+    // 웨이포인트 목록 카드의 "+ 추가" 토글(P6PatrolPage::addWpBtn_)이 켜져 있는
+    // 동안만 빈 곳 클릭+드래그가 새 웨이포인트 추가(방향 지정)로 이어진다 — 꺼져
+    // 있으면 빈 곳 드래그는 그냥 패닝(화면 이동)이다. 마커 클릭(편집 팝오버)·우클릭
+    // (삭제)은 이 값과 무관하게 항상 가능하다 — "추가" 모드는 오직 "빈 곳을 눌렀을
+    // 때 무슨 일이 생기는지"만 가른다. (예전엔 마커를 직접 드래그해 이동+재조준도
+    // 가능했지만 없앴다 — setWaypointCaptureMode 주석 참고.)
+    void setAddWaypointMode(bool on);
+    bool addWaypointMode() const { return addWaypointMode_; }
+
+    // "위치 보정" 모드 — AMCL 초기 위치를 지도 위 클릭+드래그(위치+방향)로 직접
+    // 잡아 보정한다. WP 추가/이동 모드와 배타적으로 이 모드가 켜져 있는 동안은
+    // 우선 처리된다(routeEditMode_보다도 먼저 검사). 드래그 한 번 끝나면(release)
+    // 자동으로 꺼진다(단발성) — 호출자가 다시 setPoseCaptureMode(true)로 재진입해야 한다.
+    void setPoseCaptureMode(bool on);
+    bool poseCaptureMode() const { return poseCaptureMode_; }
+
+    // 편집 팝오버(WaypointPopover)가 기존 웨이포인트를 "편집" 모드로 연 동안 쓰는,
+    // "위치 보정"과 완전히 같은 방식의 클릭+드래그(위치+방향)로 그 웨이포인트id의
+    // 새 위치를 잡는 모드 — 요청 사양: 마커를 직접 드래그해서 옮기는 대신 "초기
+    // 위치 설정"과 같은 조작으로 통일한다. setPoseCaptureMode(AMCL용)와 내부 상태를
+    // 공유하지만(poseCaptureMode_) 다른 점 하나 — 단발성이 아니라, 편집 중엔 몇
+    // 번이든 다시 클릭+드래그할 수 있도록 매 확정(release) 뒤에도 계속 무장돼
+    // 있는다(호출부가 편집이 끝날 때 빈 문자열로 꺼야 한다). 빈 문자열이면 꺼짐.
+    void setWaypointCaptureMode(const QString& waypointId);
+    void clearWaypointCaptureMode() { setWaypointCaptureMode(QString()); }
+    QString waypointCaptureId() const { return waypointCaptureId_; }
+
+    // 실제 map 프레임 미터<->캔버스 좌표 환산 기준(서버 map.resolution/origin_x/origin_y).
+    // 맵을 전환할 때마다(P6PatrolPage::loadMapData) 그 맵의 값으로 갱신해야 한다.
+    // resolutionMPerPx<=0이면 "아직 모른다"는 뜻 — canvasToMapMeters/mapMetersToCanvas가
+    // 예전의 고정 배율(kLegacyPxPerMeter) 폴백으로 돌아간다(서버 미등록 로컬 데모 맵 등).
+    void setMapMeta(qreal resolutionMPerPx, QPointF originMeters);
+
+    // 다음 paintEvent에서 모든 웨이포인트의 pos를 metersPos로부터 다시 계산하게
+    // 예약한다. P6PatrolPage::loadMapData()가 이 맵으로 전환할 때마다 부른다 —
+    // showEvent 시점에 위젯이 "언젠가 한 번" 유효한 크기를 갖는지에 기대는 대신,
+    // 실제로 그리는(=반드시 유효한 크기를 가진) 시점에 맞춰 다시 계산하는 게
+    // 유일하게 항상 안전하다(실제로 겪은 버그: 페이지를 아직 한 번도 안 보여준
+    // 상태에서 서버 웨이포인트가 도착 -> 그 시점 위젯 크기가 아직 확정 전이라 잘못
+    // 계산됨 -> 그런데 이미 그 전에 이 위젯이 "한 번은" 보여진 적이 있어서(hasFitInitialView_
+    // 가 이미 true) showEvent의 1회성 보정 훅이 다시 실행되지 않아 안 고쳐짐).
+    // 드래그로 옮기는 중인 마커는 이 재계산 대상이 아니다 — 그 마커는 pos만 직접
+    // 바꾸고 metersPos는 그대로라, 다음 paint에서 옛 자리로 되돌아가 버리기
+    // 때문에 이 함수는 "새 맵을 불러왔을 때"만 불러야 한다.
+    void requestMetersResync() { pendingMetersResync_ = true; }
+    // 캔버스 좌표 -> 실제 map 프레임 미터. "이동"/"위치 보정" 등 로봇에 좌표를 보내는
+    // 모든 곳이 이걸 거쳐야 한다 — 예전엔 각자 고정 배율(kPxPerMeter=40)로 직접
+    // 나눠서, 실제 지도 해상도(대개 0.05, 즉 20px/m)와 달라 클릭한 지점과 로봇이
+    // 실제로 가는 곳이 어긋나는 원인이었다.
+    QPointF canvasToMapMeters(QPointF canvasPos) const;
+    // 실제 map 프레임 미터 -> 캔버스 좌표. 서버에서 받은 웨이포인트/로봇 위치(미터)를
+    // 화면에 그릴 때 쓴다.
+    QPointF mapMetersToCanvas(QPointF meters) const;
+
+    // 월드(캔버스 논리) 좌표 -> 이 위젯의 실제 화면(로컬) 좌표. paintEvent가 그리는
+    // translate(panOffset_)+scale(zoomScale_)와 정확히 같은 변환(toWorld()의 역함수) —
+    // 확대/축소하거나 드래그로 화면을 이동한 뒤에는 Waypoint::pos(월드 좌표)를 그대로
+    // mapTo()에 넘기면 안 된다(mapTo는 위젯 간 오프셋만 더할 뿐 이 배율·이동은 모른다).
+    // P6PatrolPage가 웨이포인트 편집 팝오버를 마커의 "지금 화면에 보이는" 위치 근처에
+    // 띄우려면 이걸 거쳐야 한다("지도를 옮긴 뒤 웨이포인트를 클릭하면 옮기기 전
+    // 위치에 팝오버가 뜬다" 리포트로 발견).
+    QPointF worldToScreen(QPointF worldPt) const { return worldPt * zoomScale_ + panOffset_; }
+
+    // canvasToMapMeters/mapMetersToCanvas가 배경 이미지를 배치하는 데 쓰는 것과 같은
+    // "그리기 가능 영역". P6PatrolPage가 지금 canvas_에 표시 중이 아닌(맵 전환 전)
+    // 다른 맵의 웨이포인트 좌표를 미리 계산해둘 때, 이 위젯의 실제 현재 크기 기준으로
+    // 계산해야 나중에 그 맵으로 전환했을 때 자리가 어긋나지 않는다(고정된 와이어프레임
+    // 설계 크기(380x330)를 썼다가 실제 창 크기와 안 맞아 전부 왼쪽 위 구석에 뭉쳐
+    // 보이던 버그가 있었다 — 2026-09-08 실사용 리포트로 확인).
+    QRectF displayBounds() const { return floorBounds(); }
+
+    // 순찰(Nav2) 중 로봇이 실제로 따라가려는 전역 경로(rviz2의 "가려는 길" 선과
+    // 같음) — patrol_path_update WS 메시지의 map 프레임 미터 좌표를 그대로 받는다.
+    // 좌표 변환은 매번 paintEvent에서 하므로(포인트 수가 많지 않아 비용이 작다)
+    // 여기서 캔버스 좌표로 미리 바꿔둘 필요가 없다 — 웨이포인트처럼 "위젯이 아직
+    // 유효한 크기를 안 가졌을 때" 문제도 자연히 피해간다. 빈 벡터면 선을 지운다.
+    void setPlannedPath(const QVector<QPointF>& pathMeters);
+
+    // 실시간 라이다 스캔 오버레이(P5 SlamMapView::setLiveScan과 같은 slam_scan_update
+    // WS 메시지를 공유) — map 프레임 미터 좌표 그대로 받는다. uplink_node.py가
+    // map->base_link TF가 존재하는 동안(=SLAM이든 AMCL 순찰 중이든) 계속 보내므로,
+    // 로봇 초기 위치(AMCL)를 잡기 전에는 TF가 없어 자연히 빈 배열만 오다가 초기
+    // 위치를 잡는 순간부터 점이 나타나기 시작한다. 빈 벡터면 지운다.
+    void setLiveScan(const QVector<QPointF>& pointsMeters);
+
+    // 로봇의 실제 실시간 위치(로봇이 보낸 robot_position)를 지도 위에 표시한다.
+    void setCurrentRobotPosition(QPointF canvasPos, qreal headingDeg);
+    // 로봇이 아직 실시간 위치를 한 번도 안 보냈을 때, 충전 스테이션 위치를 임시로
+    // 대신 보여준다(초기 추정값) — setCurrentRobotPosition과 달리, 다음 paintEvent의
+    // metersPos 재계산 때 이 위치도 같이 다시 맞춰준다(충전 웨이포인트 자체가 그
+    // 시점에 아직 잘못 배치돼 있었을 수 있어서 — WaypointCanvas::showEvent 주석 참고).
+    // 실시간 위치가 실제로 도착하면(setCurrentRobotPosition) 이 추적을 그만둔다.
+    void setCurrentRobotPositionToChargingStation(QPointF canvasPos);
+    // 로봇 "현재 위치" 마커를 완전히 지운다(hasRobotPos_=false) — setCurrentRobotPosition*
+    // 두 함수는 값을 "덮어쓰기"만 할 뿐 지우는 방법이 없었다. 다른 로봇의 맵으로
+    // 전환했는데 그 로봇에 아직 충전 웨이포인트가 없어 새 위치를 못 채우는 경우,
+    // 이걸 먼저 부르지 않으면 이전 로봇의 마커가 좌표 그대로 남아있는다
+    // (P6PatrolPage::loadMapData 리포트, 2026-09-14).
+    void clearRobotPosition();
+    // 우상단 카메라 라이브 화면에 실제 프레임을 흘려보낸다(camera_frame WS 메시지).
+    void setCameraFrame(const QImage& frame);
+    // 로봇/맵 전환 시 호출 — 이전 로봇의 마지막 프레임이 남아있지 않도록 카메라
+    // 화면을 "카메라 연결 중" placeholder로 되돌린다.
+    void clearCameraFrame();
+
+    // P5에서 파일로 등록한 실제 pgm 맵 이미지를 배경으로 표시한다 (없으면 목업 평면도).
+    void setBackgroundImage(const QImage& image);
+
+    // backgroundImage_가 있을 때, 캔버스 좌표가 점유(벽/장애물) 픽셀 위인지 확인한다.
+    // 배경 이미지가 없으면 항상 false (목업 모드에서는 제한 없음).
+    bool isOccupiedAt(QPointF canvasPos) const;
+    // canvasPos가 점유 지점이면 근처에서 가장 가까운 비점유(자유 공간) 좌표를 찾아 반환한다.
+    // 찾지 못하면 원래 좌표를 그대로 반환한다.
+    QPointF nearestFreePoint(QPointF canvasPos) const;
+
+    // 마우스 휠 확대/축소 + 드래그 패닝 상태를 기본값(1배, 원점)으로 되돌린다.
+    void resetView();
+
+signals:
+    // "위치 보정"과 같은 방식 — 빈 곳을 클릭한 채 드래그하면 그 방향이 headingDeg로
+    // 실린다(드래그가 너무 짧으면 0도). 예전엔 클릭만으로 위치를 정하고 방향은
+    // 팝오버의 다이얼로 따로 설정해야 했다(불편하다는 요청으로 통합).
+    void waypointAddRequested(QPointF canvasPos, qreal headingDeg);
+    void waypointEditRequested(const QString& id);
+    void waypointDeleteRequested(const QString& id);
+    void routeWaypointClicked(const QString& id);
+    // 경로 편집 모드에서 charge(충전 스테이션) 마커를 클릭했다 — 자동 출발·복귀
+    // 전용이라 경로 순서에 넣을 수 없다. emergency는 patrol과 동일하게 경로에
+    // 넣을 수 있어 여기서 막지 않는다(요청 사양).
+    void chargeClickBlocked();
+    // 창 크기 변경으로 웨이포인트/로봇 위치를 지도에 맞춰 다시 배치했다 — 호출자가
+    // 들고 있는 사본(P6PatrolPage::waypoints_)도 waypoints()로 다시 읽어 동기화해야 한다.
+    void viewRescaled();
+    // "위치 보정" 모드에서 클릭+드래그(방향 지정)를 마치고 마우스를 뗐다 —
+    // canvasPos/headingDeg는 다른 신호들과 같은 캔버스 월드 좌표계·각도 규약을 쓴다
+    // (P6PatrolPage가 canvasToMapMeters()로 미터로 바꾸고 qDegreesToRadians()로 API에 보낸다).
+    void initialPoseCaptureFinished(QPointF canvasPos, qreal headingDeg);
+    // 위치 보정 모드 진입 후 실제로 드래그를 시작하기 전에 우클릭 등으로 취소했다 —
+    // 호출자는 툴바 버튼의 체크 상태를 되돌려야 한다.
+    void initialPoseCaptureCancelled();
+    // setWaypointCaptureMode(id)로 무장한 뒤 클릭(+드래그)을 마치고 마우스를 뗐다 —
+    // initialPoseCaptureFinished와 같은 좌표계·각도 규약. 드래그가 너무 짧으면(거의
+    // 클릭) 그 웨이포인트의 기존 yaw를 그대로 돌려준다(예전 마커 드래그가 쓰던
+    // 규칙과 동일 — 의미 없는 미세한 클릭으로 방향이 사라지지 않도록). 단발성이
+    // 아니다 — 편집 모드가 꺼질 때까지 매 확정 뒤에도 다시 무장된 채로 남는다.
+    void waypointPoseCaptured(const QString& id, QPointF canvasPos, qreal headingDeg);
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
+
+private:
+    int hitTest(const QPointF& worldPt) const;
+    QRectF floorBounds() const;
+    // 위젯(화면) 좌표 → 확대/패닝이 적용되지 않은 "월드" 좌표. 웨이포인트 위치·배경
+    // 이미지 배치는 전부 월드 좌표계로 다루고, 화면에 그릴 때만 스케일·이동을 적용한다.
+    QPointF toWorld(QPointF screenPt) const;
+
+    // 배경 이미지가 bounds 안에 KeepAspectRatio로 그려질 때의 (topLeft, 스케일된 크기)를 구한다.
+    bool computeImagePlacement(QPointF* outTopLeft, QSize* outScaledSize) const;
+
+    QVector<Waypoint> waypoints_;
+    QVector<QString> routePreview_;
+    QVector<QString> routeEditSelection_;
+    bool routeEditMode_;
+    bool addWaypointMode_ = false;
+
+    // 마커를 누른 채(release까지) 추적만 한다 — 움직여도 위치는 안 바뀌고, 뗄 때
+    // 항상 편집 팝오버를 연다(waypointEditRequested). 위치/방향 편집은
+    // setWaypointCaptureMode 쪽에서만 한다.
+    bool dragging_;
+    int dragIndex_;
+
+    // "WP 추가" 모드에서 빈 곳을 클릭+드래그해 새 웨이포인트의 위치+방향을 한 번에
+    // 잡는 상태 — poseCapturing_과 같은 패턴이다. 이 모드에 있는 동안은 빈 곳
+    // 드래그가 더 이상 패닝을 하지 않는다(이동 모드로 바꾸면 패닝은 그대로 된다).
+    bool addAiming_;
+    QPointF addAimAnchor_;
+    QPointF addAimCurrent_;
+
+    qreal zoomScale_;
+    QPointF panOffset_;
+    bool panning_;
+    bool panMoved_;
+    QPointF panStartMouse_;
+    QPointF panStartOffset_;
+
+    QPointF currentRobotPos_;
+    qreal currentRobotHeadingDeg_;
+    bool hasRobotPos_;
+
+    // 비어 있지 않으면 poseCaptureMode_가 "AMCL 초기 위치"가 아니라 "이 웨이포인트
+    // 편집"용으로 켜져 있다는 뜻 — mousePress/Release가 이 값의 유무로 두 쓰임을
+    // 가르고, 완료 시 emit할 신호(initialPoseCaptureFinished vs waypointPoseCaptured)
+    // 와 단발성 여부(AMCL만 단발성)도 이걸로 정한다.
+    QString waypointCaptureId_;
+
+    bool poseCaptureMode_ = false;
+    bool poseCapturing_ = false;
+    QPointF poseCaptureAnchor_;
+    QPointF poseCaptureCurrent_;
+
+    QVector<QPointF> plannedPathMeters_;
+    QVector<QPointF> liveScanMeters_;
+    QImage backgroundImage_;
+    qreal mapResolution_ = 0.0;
+    QPointF mapOrigin_;
+    bool pendingMetersResync_ = false;
+    bool robotPosTracksChargingStation_ = false;
+
+    // 이 페이지가 처음 화면에 보일 때(showEvent) 딱 한 번, 웨이포인트를 설계 기준
+    // 캔버스(380x330)에서 지금 실제 크기로 리매핑해 화면 전체를 채우도록 확대해 둔다.
+    bool hasFitInitialView_ = false;
+
+    CameraLiveView* cameraView_;
+};

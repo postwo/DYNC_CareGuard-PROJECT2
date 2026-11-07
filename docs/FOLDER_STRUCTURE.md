@@ -50,27 +50,39 @@ pc_careguard/
 │   │   ├── main.py
 │   │   ├── api/v1/   robots.py · recipients.py · events.py · medication.py
 │   │   │              patrol.py · media.py · settings.py
-│   │   ├── ws/       robot_ws.py (로봇↔서버) · dashboard_ws.py (서버↔Qt)
+│   │   ├── ws/       robot_ws.py (로봇↔서버: 메시지 라우터) · dashboard_ws.py (서버↔Qt)
+│   │   │              audio_relay.py (통화 오디오 바이트 릴레이)
 │   │   ├── models/   SQLAlchemy ORM
 │   │   ├── schemas/  Pydantic
-│   │   ├── services/ notifier.py (보호자 SMS/112·119) · scheduler.py
-│   │   └── core/     config.py · security.py · db.py
+│   │   ├── services/ robot_registry.py (로봇 연결·마지막 상태) · battery.py (필터·판정·알림)
+│   │   │              medication_log.py · intruder.py · slam_result.py · patrol_resume.py
+│   │   │              notifier.py (보호자 이메일 알림) · scheduler.py
+│   │   └── core/     config.py · db.py · errors.py (예외 분류) · passwords.py (bcrypt 래퍼)
 │   ├── alembic/                # 마이그레이션
 │   ├── storage/                # 영상·스냅샷 파일 (DB엔 경로만, git 커밋 금지)
-│   └── requirements.txt
+│   ├── tests/                  # pytest — 실제 Postgres 필요(docker compose의 postgres 또는 CI 서비스)
+│   ├── requirements.txt        # 직접 의존성
+│   └── requirements.lock.txt   # 테스트가 통과한 버전 고정본(CI가 이걸 설치)
 ├── dashboard/                  # Qt C++ 대시보드
 │   ├── src/
 │   │   ├── main.cpp
-│   │   ├── net/      ApiClient · WsClient      # REST + WebSocket
-│   │   ├── model/    RobotModel · EventModel · RecipientModel
-│   │   ├── view/     P1FleetOverview · P2EventQueue · P3Recipient
-│   │   │             P4Video · P5SlamMapping · P6PatrolRoute · P7Settings
-│   │   └── widget/   공통 컴포넌트 (와이어프레임 기준)
+│   │   ├── net/      ApiClient · WsClient · ServerConfig   # REST + WebSocket
+│   │   ├── pages/    P1~P8 페이지. 큰 페이지는 폴더로 나눠 "조립만 하는 페이지 + 역할별 클래스"로 둔다
+│   │   │   ├── p1/   P1OverviewModel (계산, 위젯 없음) · P1KpiRow · P1RobotTable · P1AlertFeed
+│   │   │   ├── p7/   P7RobotTab · P7AccountTab · P7ThresholdTab
+│   │   │   │         P7Api (REST 공통) · P7RecipientDirectory · p7_account_rules (판단 규칙)
+│   │   │   └── p8/   P8LogTab (세 로그 탭이 공유) — 탭별 차이는 P8LogTabSpec으로
+│   │   ├── dialogs/  모달 · audio/ 통화 오디오 · widgets/ 공통 컴포넌트(table_cells 등)
+│   ├── tests/        QtTest 단위 시험(화면·서버 없이). 켜는 법은 tests/CMakeLists.txt 맨 위
 │   ├── resources/    qss/ (CareGuard_DESIGN_SYSTEM 토큰) · icons/ · fonts/
 │   └── CMakeLists.txt
 └── db/
-    ├── schema/careguard_schema_v1.sql
-    └── seed/
+    ├── schema/careguard_schema.sql       # 항상 최신 상태인 전체 스키마 1개 파일.
+    │                                      # docker-entrypoint-initdb.d가 이 폴더만 마운트
+    └── migrations/                       # 번호순 이력. 자동 실행 안 됨(수동 psql 적용용)
+        ├── 00_alter_database_timezone.sql
+        ├── 01_create_base_schema.sql
+        └── 02_..N_alter_*.sql
 ```
 
 ## docs/ 및 deploy/

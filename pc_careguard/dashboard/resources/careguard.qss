@@ -32,17 +32,13 @@ QLabel[role="caption"]   { color: #5A6774; font-size: 11px; }
 QLabel[role="label"]     { color: #5A6774; font-size: 12px; font-weight: 500; }
 QLabel[role="mono"] {
     font-family: "JetBrains Mono", "D2Coding", "Consolas", monospace;
-    font-size: 13px;
+    font-size: 13px; color: #5A6774;
 }
+QLabel[role="warning"] { color: #C27500; }
+QLabel[role="danger"]  { color: #D93B47; }
 QLabel#pageTitle { font-size: 24px; font-weight: 600; }
 QLabel[role="h2"] { font-size: 18px; font-weight: 600; }
 QLabel[role="h3"] { font-size: 15px; font-weight: 600; }
-QLabel#hrDisplay {  /* 대상자 카드 심박 대형 숫자 */
-    font-size: 32px; font-weight: 700;
-    font-family: "JetBrains Mono", "D2Coding", monospace;
-}
-QLabel#hrDisplay[level="emergency"] { color: #D93B47; }
-QLabel#hrDisplay[level="offline"]   { color: #93A0AC; }
 
 /* ---------- 상단 바 ---------- */
 QFrame#topBar {
@@ -79,6 +75,7 @@ QFrame#sidebarDivider { background: #E3E8ED; max-height: 1px; margin: 6px 12px; 
 QPushButton {
     border-radius: 8px; font-size: 13px; padding: 0 14px;
     min-height: 36px; max-height: 36px;
+    outline: none;
 }
 QPushButton[size="s"] { min-height: 28px; max-height: 28px; font-size: 12px; padding: 0 10px; }
 QPushButton[size="l"] { min-height: 44px; max-height: 44px; font-size: 14px; padding: 0 18px; }
@@ -104,6 +101,10 @@ QPushButton#linkBtn {
     font-weight: 500; min-height: 0; padding: 2px 4px;
 }
 QPushButton#linkBtn:hover { text-decoration: underline; }
+QPushButton#linkBtn:disabled { background: transparent; border: none; color: #93A0AC; }
+/* P6 "+ 추가"(웨이포인트 목록)처럼 checkable로 쓰는 linkBtn용 — 켜진 상태를 색+밑줄로
+   구분한다. 일반 링크 버튼(예: "+ 새 경로")은 체크 불가라 이 규칙이 안 걸린다. */
+QPushButton#linkBtn:checked { text-decoration: underline; color: #096A60; background: #E0F5F2; border-radius: 4px; }
 
 /* ---------- 상태 배지 (QLabel#badge) ---------- */
 QLabel#badge {
@@ -116,6 +117,7 @@ QLabel#badge[level="ok"]        { background: #E8F6EF; color: #16875A; border: 1
 QLabel#badge[level="info"]      { background: #E9F2FB; color: #2563A8; border: 1px solid #C2D9F0; }
 QLabel#badge[level="offline"]   { background: #F1F4F6; color: #5A6774; border: 1px solid #DFE5EA; }
 QLabel#badge[level="emergencyFill"] { background: #D93B47; color: #FFFFFF; border: none; } /* 상단바·썸네일용 */
+QLabel#badge[size="xs"] { font-size: 10px; padding: 1px 6px; min-height: 14px; }
 
 /* ---------- 카드 ---------- */
 QFrame#card {
@@ -136,6 +138,17 @@ QFrame#recipientCard[status="attention"] { background: #FFF6E5; border: 1.5px so
 QFrame#recipientCard[status="emergency"] { background: #FDECEE; border: 1.5px solid #D93B47; }
 QFrame#recipientCard[status="offline"]   { background: #F1F4F6; border: 1px solid #DFE5EA; }
 QFrame#recipientCard[status="offline"] QLabel { color: #93A0AC; }
+/* EMERGENCY 배경 펄스(§9 모션, 2초 주기) — pulse="off"일 때 EMERGENCY_PULSE_B로 전환 */
+QFrame#recipientCard[status="emergency"][pulse="off"] { background: #FBDDE0; }
+
+/* 복약 3칸 인디케이터 (§5-3). 상태는 QLabel 텍스트(✓/⏳/✕/빈칸)로도 구분해 색만으로 표시하지 않는다 */
+QLabel#medSlot {
+    border: 1px solid #CDD5DD; border-radius: 4px;
+    font-size: 12px; font-weight: 600; color: #93A0AC;
+}
+QLabel#medSlot[state="done"]       { background: #E8F6EF; color: #16875A; border: none; }
+QLabel#medSlot[state="inProgress"] { background: #FFFFFF; color: #2563A8; border: 1px solid #2563A8; }
+QLabel#medSlot[state="missed"]     { background: #D93B47; color: #FFFFFF; border: none; }
 
 /* ---------- 테이블 ---------- */
 QTableView {
@@ -167,36 +180,189 @@ QTabBar::tab:hover:!selected { color: #16202B; }
 QTabWidget::pane { border: none; border-top: 1px solid #E3E8ED; }
 
 /* ---------- 입력 ---------- */
-QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit {
+QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit, QDateEdit {
     background: #FFFFFF; color: #16202B;
     border: 1px solid #CDD5DD; border-radius: 6px;
     padding: 5px 8px; min-height: 22px;
     selection-background-color: #B9E2DB; selection-color: #16202B;
 }
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
-QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus {
+QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus, QDateEdit:focus {
     border: 1.5px solid #0E9384;
 }
 QLineEdit[state="error"], QComboBox[state="error"] { border: 1.5px solid #D93B47; }
-QLineEdit:disabled, QComboBox:disabled { background: #F5F7F9; color: #93A0AC; }
+QLineEdit:disabled, QComboBox:disabled, QDateEdit:disabled { background: #F5F7F9; color: #93A0AC; }
 QLineEdit::placeholder { color: #93A0AC; }
+/* 입력칸 테두리를 없애 값만 텍스트처럼 보이게 한다(P7 임계값 탭 operator 조회 전용 등).
+   :disabled과 달리 회색으로 흐려지지 않는다 — "읽을 수 없다"가 아니라 "고칠 수만 없다"이므로. */
+QLineEdit[variant="plain"] { background: transparent; border: none; padding: 5px 0; min-height: 22px; }
 
-QSpinBox, QDoubleSpinBox, QTimeEdit {
+QSpinBox, QDoubleSpinBox, QTimeEdit, QDateEdit {
     font-family: "JetBrains Mono", "D2Coding", monospace; font-size: 13px;
 }
+
+/* P2 기간 필터 — "직접" 선택 전에는 읽기 전용으로 계산된 범위만 보여준다
+   (gui/wireframe/v1/p2_filter_bar_period_segment_wireframe.html .date.off) */
+QDateEdit[state="off"] { background: #F5F7F9; color: #93A0AC; border-color: #E3E8ED; }
+
+QDateEdit::drop-down {
+    subcontrol-origin: padding; subcontrol-position: center right;
+    width: 22px; border: none;
+    border-top-right-radius: 6px; border-bottom-right-radius: 6px;
+}
+QDateEdit::drop-down:hover { background: #F0F4F7; }
+/* down-arrow 서브컨트롤은 image를 지정하지 않으면 빈 상자로 렌더링된다(Qt 스타일시트
+   특성). QComboBox와 동일하게 규칙 자체를 두지 않아 스타일 기본 화살표가 그려지게 한다. */
+
+/* ---------- 날짜 선택 팝업 (QCalendarWidget) ----------
+   주말 색·요일 라벨·오늘 표시는 QSS로 제어 불가 —
+   theme/calendar_style.h 의 applyCareGuardDateEdit() 를 반드시 함께 호출할 것. */
+QCalendarWidget {
+    background: #FFFFFF;
+    border: 1px solid #CDD5DD;
+    border-radius: 8px;
+}
+QCalendarWidget QWidget {
+    alternate-background-color: #FFFFFF;
+    background: #FFFFFF;
+}
+QCalendarWidget QWidget#qt_calendar_navigationbar {
+    background: #FFFFFF;
+    border-bottom: 1px solid #E3E8ED;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    min-height: 42px;
+    max-height: 42px;
+}
+QCalendarWidget QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #16202B;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 10px;
+    min-height: 26px;
+    max-height: 26px;
+    margin: 0 2px;
+}
+QCalendarWidget QToolButton:hover   { background: #F0F4F7; }
+QCalendarWidget QToolButton:pressed { background: #EDF1F4; }
+QCalendarWidget QToolButton::menu-indicator { image: none; width: 0; }
+QCalendarWidget QToolButton#qt_calendar_prevmonth,
+QCalendarWidget QToolButton#qt_calendar_nextmonth {
+    min-width: 28px;  max-width: 28px;
+    min-height: 28px; max-height: 28px;
+    padding: 0;
+    color: #5A6774;
+    font-size: 16px;
+    font-weight: 400;
+}
+QCalendarWidget QMenu {
+    background: #FFFFFF;
+    border: 1px solid #CDD5DD;
+    border-radius: 8px;
+    padding: 4px;
+}
+QCalendarWidget QMenu::item {
+    color: #16202B;
+    font-size: 13px;
+    padding: 5px 16px;
+    border-radius: 6px;
+}
+QCalendarWidget QMenu::item:selected {
+    background: #E0F5F2;
+    color: #0B7A6E;
+}
+QCalendarWidget QSpinBox#qt_calendar_yearedit {
+    background: #FFFFFF;
+    color: #16202B;
+    border: 1px solid #0E9384;
+    border-radius: 6px;
+    font-family: "JetBrains Mono", "D2Coding", monospace;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 2px 6px;
+    min-width: 64px;
+    selection-background-color: #B9E2DB;
+    selection-color: #16202B;
+}
+QCalendarWidget QSpinBox#qt_calendar_yearedit::up-button,
+QCalendarWidget QSpinBox#qt_calendar_yearedit::down-button { width: 14px; border: none; }
+QCalendarWidget QAbstractItemView#qt_calendar_calendarview {
+    background: #FFFFFF;
+    border: none;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    outline: none;
+    font-size: 13px;
+    padding: 6px 6px 8px 6px;
+    selection-background-color: #0E9384;
+    selection-color: #FFFFFF;
+}
+QCalendarWidget QAbstractItemView:enabled  { color: #16202B; }
+QCalendarWidget QAbstractItemView:disabled { color: #CDD5DD; }
+QCalendarWidget QAbstractItemView#qt_calendar_calendarview QHeaderView::section {
+    background: #FFFFFF;
+    color: #93A0AC;
+    font-size: 11px;
+    font-weight: 500;
+    border: none;
+    padding: 4px 0;
+}
+/* 와이어프레임(P5 텔레옵 속도값, P6 yaw 값)은 증감 화살표 없는 평범한 박스로 그려진다 —
+   네이티브 스핀 버튼을 숨겨 맞춘다. 휠·화살표 키로는 계속 증감할 수 있다. */
+QSpinBox::up-button, QSpinBox::down-button,
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { width: 0; border: none; }
 QComboBox::drop-down { border: none; width: 22px; }
+/* 편집 가능한(setEditable(true)) QComboBox의 내부 QLineEdit도 위 공용 QLineEdit 규칙에 걸려
+   자기 테두리·radius·배경을 또 그린다 — 콤보 자신의 박스 안에 radius 있는 박스가 하나 더
+   보이는 원인. 콤보에 소속된 QLineEdit만 투명·무테두리로 되돌려 콤보의 외곽 박스만 남긴다. */
+QComboBox QLineEdit {
+    border: none; background: transparent; border-radius: 0px; padding: 0px;
+}
+/* 목록(QAbstractItemView) 자신은 배경을 안 칠한다 — 불투명 배경을 칠하면 컨테이너
+   (QComboBoxPrivateContainer)가 그리는 둥근 모서리를 목록의 각진 사각형이 그대로 덮어버려
+   radius가 안 보인다. 그래서 테두리·배경·radius는 전부 컨테이너 쪽(CareGuardComboBox::
+   showPopup()이 컨테이너에 직접 씌우는 인라인 스타일시트)이 맡고, 여기서는 선택 하이라이트
+   색만 지정한다. */
 QComboBox QAbstractItemView {
-    background: #FFFFFF; border: 1px solid #CDD5DD; border-radius: 8px;
+    background: transparent; border: none; border-radius: 0px;
     selection-background-color: #E0F5F2; selection-color: #0B7A6E;
     outline: none; padding: 4px;
 }
+/* outline:none은 뷰 전체의 포커스 사각형만 지우고, "현재 항목"(키보드 포커스가 있는 행) 하나에
+   델리게이트가 따로 그리는 점선/실선 테두리는 안 지운다 — 비편집형 콤보(로봇·맵 배정)는 열자마자
+   현재 선택 인덱스(기본 0번)에 그 표시가 바로 보여서 "컨테이너 안에 테두리가 있다"로 보였다
+   (편집형인 복약 시각 콤보는 이 표시가 잘 안 걸려서 안 보였음). 항목 단위로 한 번 더 지운다. */
+QComboBox QAbstractItemView::item { border: none; outline: none; }
+QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:focus {
+    border: none; outline: none;
+}
+/* 항목이 다 안 보일 수 있을 때 Qt가 자동으로 붙이는 "더 보기" 스크롤 화살표
+   (QComboBoxPrivateScroller)는 목록 맨 위/아래에 자기만의 각진 기본 배경을 그린다 — 그게
+   컨테이너의 둥근 아래쪽 모서리를 덮어버려 그 부분만 각지게 보이는 원인이었다
+   (실제로 grab() 자가 캡처로 재현: 아래쪽 모서리가 이 위젯 때문에 각져 있었음). 배경을
+   투명하게 비워 컨테이너의 radius가 그대로 비쳐 보이게 한다 — 화살표 글리프 자체는 계속
+   그려지므로 스크롤 가능하다는 표시는 남는다.
+   (이 위젯은 "메뉴형" 팝업에서만 나타나는데, careguard_combo_box.cpp의 NoMenuPopupStyle이
+   그 경로 자체를 꺼버려서 지금은 실제로 걸릴 일이 없다 — 그래도 남겨두면 안전하므로
+   지우지 않는다.) */
+QComboBoxPrivateScroller { background: transparent; border: none; }
+
+/* 임계값 탭 로봇 선택 콤보 — 팝업 폭을 박스 폭에 맞추고 항목에 여백을 준다 */
+QComboBox#thresholdRobotCombo { min-width: 220px; }
+QComboBox#thresholdRobotCombo QAbstractItemView::item { padding: 6px 10px; }
 
 QCheckBox { spacing: 6px; color: #16202B; font-size: 13px; }
 QCheckBox::indicator {
     width: 14px; height: 14px; border: 1px solid #CDD5DD;
     border-radius: 4px; background: #FFFFFF;
 }
-QCheckBox::indicator:checked { background: #0E9384; border-color: #0E9384; }
+QCheckBox::indicator:checked {
+    background: #0E9384; border-color: #0E9384;
+    image: url(:/icons/check.svg);
+}
 QCheckBox::indicator:hover { border-color: #0E9384; }
 
 /* 요일 칩 (checkable QPushButton#dayChip) */
@@ -214,6 +380,7 @@ QPushButton#segBtn {
 }
 QPushButton#segBtn[pos="first"] { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 QPushButton#segBtn[pos="last"]  { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+QPushButton#segBtn[pos="only"]  { border-radius: 6px; }
 QPushButton#segBtn:checked { background: #E0F5F2; color: #0B7A6E; font-weight: 500; }
 
 /* ---------- 배너 ---------- */
@@ -257,6 +424,7 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 /* ---------- 리스트 (알림 피드 등) ---------- */
 QListWidget { background: #FFFFFF; border: 1px solid #E3E8ED; border-radius: 12px; outline: none; }
 QListWidget::item { border-bottom: 1px solid #E3E8ED; padding: 7px 12px; }
+QListWidget#alertList::item { padding: 3px 12px; }
 QListWidget::item:hover { background: #F0F4F7; }
 QListWidget::item:selected { background: #E0F5F2; color: #16202B; }
 
@@ -268,6 +436,19 @@ QProgressBar {
 QProgressBar::chunk { background: #0E9384; border-radius: 4px; }
 QProgressBar[level="attention"]::chunk { background: #C27500; }
 QProgressBar[level="emergency"]::chunk { background: #D93B47; }
+
+/* ---------- 슬라이더 (P5 텔레옵 선속도/각속도) ---------- */
+/* p5_slam_mapping_wireframe_standalone.html: 트랙 6px, 채움 ACCENT, 손잡이 12x12 원 */
+QSlider::groove:horizontal { height: 6px; background: #EDF1F4; border-radius: 3px; }
+QSlider::add-page:horizontal  { background: #EDF1F4; border-radius: 3px; }
+QSlider::sub-page:horizontal  { background: #0E9384; border-radius: 3px; }
+QSlider::handle:horizontal {
+    width: 12px; height: 12px; margin: -3px 0;
+    background: #FFFFFF; border: 1.5px solid #0E9384; border-radius: 6px;
+}
+QSlider::handle:horizontal:hover   { border-color: #0B7A6E; }
+QSlider:disabled::sub-page:horizontal { background: #CDD5DD; }
+QSlider:disabled::handle:horizontal   { border-color: #CDD5DD; }
 
 /* ---------- 툴팁 ---------- */
 QToolTip {
@@ -297,11 +478,108 @@ QPushButton#loginBtn:disabled { background: #EDF1F4; color: #93A0AC; border: 1px
 QPushButton#loginBtn[state="loading"] { background: #0B7A6E; }
 QLabel#loginError { color: #D93B47; font-size: 11px; }
 
-/* ---------- P1 행별 비상정지 (§6) ---------- */
+/* ---------- P5 로봇 셀렉터 칩(QPushButton, 2026-09-10부로 P5는 아래 CareGuardComboBox
+   버전으로 교체됨) / P6 맵 선택 칩 ---------- */
+QPushButton#robotChip {
+    /* min/max-height, text-align을 지정하지 않아 기본 QPushButton 규칙(36px, 가운데
+       정렬)을 그대로 물려받는다 — "파일로 등록" 등 옆 버튼과 높이를 맞추고, 내용이
+       왼쪽 테두리에 붙어 보이던 것도 가운데 정렬로 해결된다. */
+    background: #FFFFFF; color: #16202B; border: 1px solid #CDD5DD; border-radius: 6px;
+    font-size: 11px; padding: 0 14px;
+}
+QPushButton#robotChip:hover { background: #F0F4F7; }
+/* 문구 안에 이미 "▾"를 직접 넣으므로, setMenu()가 붙는 버튼(P6 mapChipBtn_)의 Qt 기본
+   메뉴 인디케이터는 숨긴다 — 안 그러면 화살표가 두 개 겹쳐 보인다. */
+QPushButton#robotChip::menu-indicator { image: none; width: 0; }
+
+/* ---------- P5 로봇 셀렉터 콤보(CareGuardComboBox) ---------- */
+/* 위 QPushButton#robotChip과 같은 박스 값(높이 36px는 기본 QComboBox 규칙엔 없어서
+   여기서 직접 지정) — 대상자 페이지 모달의 로봇/맵 배정 콤보와 같은 위젯으로 통일하되,
+   헤더 툴바에서 옆 버튼("파일로 등록"·"매핑 시작")과 높이가 맞아야 해서 그 값만 맞춘다.
+   화살표는 CareGuardComboBox::paintEvent가 직접 그리므로 여기서 손댈 것 없다. */
+QComboBox#robotChip {
+    background: #FFFFFF; color: #16202B; border: 1px solid #CDD5DD; border-radius: 6px;
+    font-size: 11px; padding: 0 14px; min-height: 36px; max-height: 36px;
+}
+QComboBox#robotChip:hover { background: #F0F4F7; }
+/* 콤보가 닫혀있을 때 보이는 트리거 박스 글자색 — 위 기본 규칙의 color:#16202B를
+   이겨야 해서(스타일시트에선 팔레트로 못 덮어씀) 어트리뷰트 셀렉터로 더 구체적인
+   규칙을 둔다. P5MapPage::applyRobotChipColor()가 state 프로퍼티를 갱신한다.
+   색값은 theme/tokens.h의 Tokens::OK.main(#16875A)/TEXT_MUTED(#93A0AC)와 맞춘 것. */
+QComboBox#robotChip[state="online"] { color: #16875A; }
+QComboBox#robotChip[state="offline"] { color: #93A0AC; }
+
+/* ---------- 드롭다운 메뉴 (예: P6 mapMenu_) ---------- */
+QMenu {
+    background: #FFFFFF;
+    border: 1px solid #E0E0E0;
+    border-radius: 8px;
+    padding: 6px;
+}
+QMenu::item {
+    padding: 8px 14px;
+    border-radius: 6px;
+    color: #16202B;
+}
+QMenu::item:selected { background: #E0F5F2; color: #0B7A6E; }
+QMenu::separator { height: 1px; background: #E3E8ED; margin: 4px 6px; }
+
+/* ---------- P5 매핑 현황 오버레이 (§6 — 레이아웃 밀지 않는 자식 오버레이) ---------- */
+QFrame#mappingStatusHeader { background: #FFFFFF; border: 1px solid #E3E8ED; border-radius: 12px; }
+QFrame#mappingStatusHeader[open="true"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+QFrame#mappingStatusPanel { background: #FFFFFF; border: 1px solid #CDD5DD; border-radius: 12px; }
+QFrame#mappingStatusRowHeader { background: #EDF1F4; border-bottom: 1px solid #CDD5DD; }
+QFrame#mappingStatusRow { border-bottom: 1px solid #E3E8ED; }
+QFrame#mappingStatusRow[warn="true"] { background: #FFF6E5; }
+
+/* ---------- P5 SLAM 매핑 카드 ---------- */
+QFrame#slamCanvas { background: #F5F7F9; }
+
+/* ---------- P5 텔레옵 키패드 ---------- */
+QPushButton#keypadBtn {
+    background: #FFFFFF; border: 1px solid #CDD5DD; border-radius: 6px;
+    color: #5A6774; min-width: 0; min-height: 0; padding: 0;
+}
+QPushButton#keypadBtn:hover { background: #F0F4F7; }
+QPushButton#keypadBtn[active="true"] { background: #E0F5F2; border: 1.5px solid #0E9384; color: #0B7A6E; }
+QLabel#keypadSpace {
+    border: 1px solid #CDD5DD; border-radius: 6px; background: #FFFFFF; color: #5A6774; font-size: 11px;
+}
+QLabel#keypadSpace[active="true"] { background: #E0F5F2; border: 1.5px solid #0E9384; color: #0B7A6E; }
+
+/* ---------- P6 경로 탭 칩 ---------- */
+QPushButton#routeChip {
+    background: #FFFFFF; color: #5A6774; border: 1px solid #CDD5DD; border-radius: 5px;
+    font-size: 11px; padding: 3px 8px; min-height: 0; max-height: 22px;
+}
+QPushButton#routeChip:checked { background: #E0F5F2; color: #0B7A6E; font-weight: 500; border-color: #E0F5F2; }
+
+/* ---------- P6 경로 순서 리스트 (드래그 재정렬) ---------- */
+QListWidget#routeOrderList {
+    background: transparent; border: none; border-radius: 0;
+}
+QListWidget#routeOrderList::item {
+    background: #FFFFFF; border: 1px solid #E3E8ED; border-radius: 6px;
+    padding: 4px 8px; margin-bottom: 4px; font-size: 11px;
+}
+QListWidget#routeOrderList::item:selected { background: #F0F4F7; color: #16202B; }
+
+/* ---------- P5 파일 등록 모달 드롭존 ---------- */
+QFrame#dropzoneCard { background: #F5F7F9; border: 1px dashed #CDD5DD; border-radius: 8px; }
+QFrame#dropzoneCard[filled="true"] { background: #E8F6EF; border: 1px solid #BCE3D0; }
+QFrame#previewBox { background: #F5F7F9; border: 1px solid #E3E8ED; border-radius: 8px; }
+
+/* ---------- P1 행별 액션·비상정지 (§6) ---------- */
+/* QPushButton[size="s"]는 QWidget의 내장 size 프로퍼티(QSize)와 이름이 겹쳐
+   setProperty("size", "s")가 항상 실패한다 — 그래서 objectName으로 직접 지정. */
+QPushButton#detailBtn {
+    border-radius: 6px; font-size: 12px; font-weight: 500;
+    min-height: 28px; max-height: 28px; padding: 0 10px;
+}
 QPushButton#rowEstopBtn {
     background: #FFFFFF; color: #D93B47; border: 1px solid #D93B47;
-    border-radius: 6px; font-size: 11px; font-weight: 500;
-    min-height: 26px; max-height: 26px; padding: 0 8px;
+    border-radius: 6px; font-size: 12px; font-weight: 500;
+    min-height: 28px; max-height: 28px; padding: 0 10px;
 }
 QPushButton#rowEstopBtn:hover   { background: #FDECEE; }
 QPushButton#rowEstopBtn:disabled{ background: #EDF1F4; color: #93A0AC; border: 1px solid #E3E8ED; }
@@ -309,3 +587,42 @@ QPushButton#rowEstopBtn[state="release"] {   /* 정지 상태 → 해제 버튼 
     color: #16202B; border: 1px solid #CDD5DD;
 }
 QPushButton#rowEstopBtn[state="release"]:hover { background: #F0F4F7; }
+
+/* ---------- P4 영상 관리 (§6 idx 3) ---------- */
+QFrame#videoThumb {   /* 카드 상단 썸네일 영역 */
+    background: #16202B; border-top-left-radius: 12px; border-top-right-radius: 12px;
+}
+QLabel#videoDuration {   /* 썸네일 우하단 재생 길이 */
+    background: rgba(0, 0, 0, 0.5); color: #FFFFFF;
+    font-family: "JetBrains Mono", "D2Coding", monospace; font-size: 11px;
+    border-radius: 3px; padding: 1px 5px;
+}
+QFrame#videoEmptySlot {   /* "이벤트 발생 시 자동으로 추가됩니다" 빈 슬롯 */
+    background: #F5F7F9; border: 1px dashed #CDD5DD; border-radius: 12px;
+}
+QLabel#videoLockLabel {   /* 재생 모달 — 잠금 안내 (다크 영상 배경 위 흰 텍스트) */
+    color: #FFFFFF; font-size: 11px;
+}
+QFrame#videoPlayerArea {   /* 재생 모달 본문 영상 자리 (썸네일과 달리 사방 라운드) */
+    background: #16202B; border-radius: 8px;
+}
+QWidget#videoFullscreenHost {   /* 영상 영역을 전체화면으로 띄울 때의 배경 */
+    background: #000000;
+}
+QFrame#videoLockCard {   /* 잠금 안내 카드 — Tokens::VIDEO_LOCK_BG(0.6) */
+    background: rgba(22, 32, 43, 153); border-radius: 8px;
+}
+QLabel#videoCountdown {   /* 잠금 카드 우상단 열람 가능 시간 카운트다운 */
+    color: #C27500; font-family: "JetBrains Mono", "D2Coding", monospace; font-size: 11px;
+    background: rgba(0, 0, 0, 0.5); padding: 2px 6px; border-radius: 4px;
+}
+QFrame#videoTimelineBox {   /* 타임라인·심박 동기화 박스 */
+    background: transparent; border: 1px solid #E3E8ED; border-radius: 8px;
+}
+QFrame#eventSummaryCard {   /* 재생 모달 — 연결 이벤트 카드. 배경/테두리만 강조하고
+                                내부 텍스트는 각자 자기 role 색을 그대로 쓴다(banner처럼
+                                전체를 강제로 물들이지 않음 — 제목 검정/부제 회색/링크 초록). */
+    background: #FDECEE; border: 1px solid #F5C2C7; border-radius: 8px;
+}
+QPushButton[align="left"] { text-align: left; }
+QPushButton[variant="secondary"][tone="danger"] { color: #D93B47; }
