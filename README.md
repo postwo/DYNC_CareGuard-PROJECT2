@@ -8,8 +8,7 @@
 
 > **로봇이 집 안을 돌며 대상자를 확인하고, 약을 건네고, 위급 상황을 바로 알립니다.**
 
-LIMO · TurtleBot3 · ROS 2 Humble · Nav2 · YOLO 얼굴 인식 · FastAPI · Qt6 · PostgreSQL 로 만든 돌봄 로봇 서비스입니다.
-실제 로봇 3대(R-05 · R-06 · R-07)에 배포해 검증했고, 발견한 문제는 [`docs/TroubleShooting/`](docs/TroubleShooting)에 31건 기록했습니다.
+실내 자율주행 로봇(LIMO / TurtleBot3)이 독거노인 가정을 정기 순찰하며 **복약을 관리**하고, 낙상·SOS·미등록 침입자 같은 **이상 상황을 감지**해 원격 관제 대시보드와 보호자에게 즉시 알립니다.
 
 | LIMO (R-07) 순찰 | TurtleBot3 (R-05 / R-06) 순찰 |
 | :-: | :-: |
