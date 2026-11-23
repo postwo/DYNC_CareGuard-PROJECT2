@@ -30,15 +30,16 @@
 4. [기능 요구사항](#4-기능-요구사항)
 5. [시스템 아키텍처](#5-시스템-아키텍처)
 6. [하드웨어 구성](#6-하드웨어-구성)
-7. [중앙 서버와 ROS 2 통신](#7-중앙-서버와-ros-2-통신)
-8. [통합 관제 대시보드](#8-통합-관제-대시보드)
-9. [핵심 기술과 문제 해결](#9-핵심-기술과-문제-해결)
-10. [구현 결과와 검증](#10-구현-결과와-검증)
-11. [현재 한계와 확장 목표](#11-현재-한계와-확장-목표)
-12. [소스 구성](#12-소스-구성)
-13. [프로젝트 기술 스택](#13-프로젝트-기술-스택)
-14. [설치와 실행](#14-설치와-실행)
-15. [문서](#15-문서)
+7. [시퀀스 다이어그램](#7-시퀀스-다이어그램)
+8. [중앙 서버와 ROS 2 통신](#8-중앙-서버와-ros-2-통신)
+9. [통합 관제 대시보드](#9-통합-관제-대시보드)
+10. [핵심 기술과 문제 해결](#10-핵심-기술과-문제-해결)
+11. [구현 결과와 검증](#11-구현-결과와-검증)
+12. [현재 한계와 확장 목표](#12-현재-한계와-확장-목표)
+13. [소스 구성](#13-소스-구성)
+14. [프로젝트 기술 스택](#14-프로젝트-기술-스택)
+15. [설치와 실행](#15-설치와-실행)
+16. [문서](#16-문서)
 
 </details>
 
@@ -156,13 +157,15 @@
 </p>
 
 - 로봇은 서버와의 **유일한 통신구인 agent**(`careguard_agent` / `careguard_turtlebot_agent`의 uplink·downlink 노드)로만 외부와 통신합니다. 다른 ROS 2 노드는 서버를 직접 알지 못합니다.
-- agent ↔ 서버 실시간 채널은 **WebSocket(기본)** 또는 **ROS 2 DDS(`CAREGUARD_LINK=ros2`)** 중 하나로 운용합니다. ROS 2 모드에서는 중앙 서버 PC의 `careguard_server_bridge`가 FastAPI의 기존 `/ws/robot`으로 그대로 중계합니다([7장](#7-중앙-서버와-ros-2-통신)).
+- agent ↔ 서버 실시간 채널은 **WebSocket(기본)** 또는 **ROS 2 DDS(`CAREGUARD_LINK=ros2`)** 중 하나로 운용합니다. ROS 2 모드에서는 중앙 서버 PC의 `careguard_server_bridge`가 FastAPI의 기존 `/ws/robot`으로 그대로 중계합니다([8장](#8-중앙-서버와-ros-2-통신)).
 - ESP32 응급 호출 버튼은 MQTT(mosquitto)로 서버에 별도 연결됩니다.
 - 로봇 쪽 워크스페이스는 PC에서 `rsync`로 배포하며, 로봇은 systemd 서비스로 agent를 자동 기동합니다.
 
 ---
 
 ## 6. 하드웨어 구성
+
+### 6.1 하드웨어 아키텍처
 
 <p align="center">
   <img src="docs/images/hardware_architecture.png" alt="CareGuard 하드웨어 구성도" width="100%" />
@@ -175,20 +178,82 @@
 | LiDAR | YDLIDAR 2D | LDS-03 (R-06) |
 | 카메라 | Orbbec Dabai 깊이 카메라 | IMX219 CSI (`camera_ros`, R-05 상하반전 보정) |
 | 구동 | limo_base (`/cmd_vel`, `LimoStatus` 배터리) | OpenCR 1.0 · Dynamixel XL430 ×2 (`/battery_state`) |
-| 약통 | Arduino 1 슬롯 (서보 + IR D5) | Arduino 2 슬롯, R-06 (서보 A/B + IR D9/D8) |
+| 약통 | Arduino **2 슬롯** (서보 A D3 · B D4, IR A D9 · B D8) | Arduino **1 슬롯**, R-06 (서보 D4, IR D5) |
 | 음성 | USB 오디오 스피커·마이크 (Piper TTS, Opus 통화) | 스피커 (Piper TTS) |
 | 표시 | 후면 7인치 모니터 (robot_kiosk) | — |
 
 | 장치 | 구성 |
 | :-- | :-- |
 | 응급 호출 버튼 | ESP32 + 버튼(GPIO INPUT_PULLUP), Wi-Fi → MQTT `cg/v1/button/{CODE}/press` |
-| 약통 펌웨어 | 서보 0°↔150° 슬롯 개방, IR 센서로 수령 확인 → 시리얼 ack (`careguard_hw/firmware/`, `careguard_turtlebot_agent/firmware/`) |
+| 약통 펌웨어 | 서보 0°↔150° 슬롯 개방, IR 감지 5초 후 자동 닫힘 → 시리얼 `OK`/`CLOSED` (`careguard_hw/firmware/`, `careguard_turtlebot_agent/firmware/`) |
 | 중앙 서버 PC | FastAPI(uvicorn, systemd) · PostgreSQL 16 · mosquitto(Docker Compose) · ROS 2 브리지 · Qt6 대시보드 |
 | 네트워크 | 같은 LAN 또는 Tailscale VPN |
 
+### 6.2 실제 로봇 (시연 영상 캡처)
+
+<table>
+  <tr>
+    <td width="33%" align="center"><img src="docs/images/photos/limo_r07_rear_screen.jpg" alt="LIMO R-07 후면 모니터" /></td>
+    <td width="33%" align="center"><img src="docs/images/photos/turtlebot_pillbox.jpg" alt="TurtleBot3 약통 탑재" /></td>
+    <td width="33%" align="center"><img src="docs/images/photos/pillbox_slots_close.jpg" alt="약통 슬롯 근접" /></td>
+  </tr>
+  <tr>
+    <td align="center">LIMO (R-07) · 후면 7인치 키오스크 화면</td>
+    <td align="center">TurtleBot3 · 측면 약통 탑재</td>
+    <td align="center">약통 슬롯 근접 (시연용 모형 알약)</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/photos/patrol_face_check.jpg" alt="등록 얼굴 앞 순찰" /></td>
+    <td align="center"><img src="docs/images/photos/two_robots_patrol.jpg" alt="LIMO와 TurtleBot3 동시 운용" /></td>
+    <td align="center"><img src="docs/images/photos/dashboard_p6_live.jpg" alt="P6 순찰 경로 화면" /></td>
+  </tr>
+  <tr>
+    <td align="center">등록 대상자 사진 앞 순찰 · 재실 확인</td>
+    <td align="center">LIMO + TurtleBot3 동시 운용</td>
+    <td align="center">관제 PC의 P6 순찰·경로 화면</td>
+  </tr>
+</table>
+
+> 사진은 [`docs/videos/`](docs/videos) 시연 영상에서 캡처했습니다.
+
+### 6.3 약통(디스펜서) 아키텍처
+
+<p align="center">
+  <img src="docs/images/pillbox_architecture.png" alt="CareGuard 약통 하드웨어 아키텍처" width="100%" />
+</p>
+
+- `medication_task`가 `/careguard/hw/pillbox_slot` 서비스로 슬롯을 열면, `pillbox_controller`가 USB 시리얼로 `OPEN A`를 보내고 `OK A` ack를 받습니다.
+- 대상자가 약을 꺼내 IR 센서가 감지되면 펌웨어가 5초 뒤 스스로 닫고 `CLOSED A`를 알립니다. 이 알림이 곧 수령 확인(`delivered`)입니다.
+- 20초 안에 회수가 없으면 강제로 닫고 `jammed`, 시리얼 실패는 `hw_error`로 기록합니다.
+
 ---
 
-## 7. 중앙 서버와 ROS 2 통신
+## 7. 시퀀스 다이어그램
+
+<details open>
+<summary><b>SD-1 · 정기 순찰</b></summary>
+
+<p align="center"><img src="docs/images/sequence/sd1_patrol.png" alt="정기 순찰 시퀀스" width="100%" /></p>
+
+</details>
+
+<details>
+<summary><b>SD-2 · SOS 호출 버튼 → 출동 → 관제사 통화</b></summary>
+
+<p align="center"><img src="docs/images/sequence/sd2_sos.png" alt="SOS 시퀀스" width="100%" /></p>
+
+</details>
+
+<details>
+<summary><b>SD-3 · ROS 2 링크 연결 수명주기</b></summary>
+
+<p align="center"><img src="docs/images/sequence/sd3_ros2_link.png" alt="ROS 2 링크 시퀀스" width="100%" /></p>
+
+</details>
+
+---
+
+## 8. 중앙 서버와 ROS 2 통신
 
 <p align="center">
   <img src="docs/images/ros2_bridge_architecture.png" alt="CareGuard 중앙 서버 ROS 2 브리지" width="100%" />
@@ -223,7 +288,7 @@ ros2 topic echo /careguard/bridge/status
 
 ---
 
-## 8. 통합 관제 대시보드
+## 9. 통합 관제 대시보드
 
 > Qt6 C++ 데스크톱 앱. 위험도·상태 우선순위(`EMERGENCY > ATTENTION > OFFLINE > NORMAL`)에 따라 조치가 급한 항목이 위로 올라옵니다.
 
@@ -266,7 +331,7 @@ ros2 topic echo /careguard/bridge/status
 
 ---
 
-## 9. 핵심 기술과 문제 해결
+## 10. 핵심 기술과 문제 해결
 
 | 과제 | 적용 기술 · 접근 | 결과 |
 | :-- | :-- | :-- |
@@ -283,7 +348,7 @@ ros2 topic echo /careguard/bridge/status
 
 ---
 
-## 10. 구현 결과와 검증
+## 11. 구현 결과와 검증
 
 | 구분 | 확인 내용 | 범위 |
 | :-- | :-- | :-- |
@@ -301,7 +366,7 @@ cd pc_careguard/ros2_bridge && python3 -m pytest -q test
 
 ---
 
-## 11. 현재 한계와 확장 목표
+## 12. 현재 한계와 확장 목표
 
 | 현재 한계 | 확장 목표 |
 | :-- | :-- |
@@ -313,7 +378,7 @@ cd pc_careguard/ros2_bridge && python3 -m pytest -q test
 
 ---
 
-## 12. 소스 구성
+## 13. 소스 구성
 
 ```text
 DYNC_CareGuard-PROJECT2/
@@ -338,7 +403,7 @@ DYNC_CareGuard-PROJECT2/
 
 ---
 
-## 13. 프로젝트 기술 스택
+## 14. 프로젝트 기술 스택
 
 ### Robot & Middleware
 <p>
@@ -390,16 +455,16 @@ DYNC_CareGuard-PROJECT2/
 
 ---
 
-## 14. 설치와 실행
+## 15. 설치와 실행
 
-### 14.1 저장소 받기
+### 15.1 저장소 받기
 
 ```bash
 git clone https://github.com/postwo/DYNC_CareGuard-PROJECT2.git
 cd DYNC_CareGuard-PROJECT2
 ```
 
-### 14.2 장비별 준비
+### 15.2 장비별 준비
 
 | 장비 | 작업 디렉터리 | 먼저 준비할 항목 |
 | :-- | :-- | :-- |
@@ -409,7 +474,7 @@ cd DYNC_CareGuard-PROJECT2
 | LIMO (R-07) | `robot_careguard_ws/` | ROS 2 Humble, `CAREGUARD_SERVER_URL`, `CAREGUARD_ROBOT_CODE`, systemd 서비스 |
 | TurtleBot3 (R-05/R-06) | `careguard_turtlebot_agent/` | ROS 2 Humble, Nav2, `camera_ros`, systemd 서비스 |
 
-### 14.3 통합 실행 순서
+### 15.3 통합 실행 순서
 
 1. PostgreSQL + MQTT 브로커
 
@@ -443,7 +508,7 @@ ros2 launch careguard_server_bridge bridge.launch.py server_url:=http://127.0.0.
 
 ---
 
-## 15. 문서
+## 16. 문서
 
 | 문서 | 설명 |
 | :-- | :-- |
