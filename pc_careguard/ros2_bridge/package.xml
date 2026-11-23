@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>careguard_server_bridge</name>
+  <version>0.1.0</version>
+  <description>CareGuard 중앙 서버(PC)용 ROS 2 브리지. 로봇 agent(CAREGUARD_LINK=ros2)의 /careguard/&lt;robot&gt;/* 토픽을 FastAPI 의 기존 /ws/robot WebSocket 으로 중계하고, 서버 명령을 /to_robot 토픽으로 내려보낸다. 로봇별 ROS_DOMAIN_ID 를 rclpy Context 로 분리해 동시에 참여한다.</description>
+  <maintainer email="team@example.com">careguard</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <exec_depend>python3-websockets</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

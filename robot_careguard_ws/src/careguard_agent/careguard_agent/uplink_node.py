@@ -64,6 +64,7 @@ from sensor_msgs.msg import CompressedImage, LaserScan
 from std_msgs.msg import String
 
 from . import media_uploader, ws_config
+from .ros2_link import Ros2Link
 
 RECONNECT_DELAY_SEC = 3.0
 
@@ -199,8 +200,15 @@ class UplinkNode(Node):
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
         self.create_timer(SLAM_OVERLAY_INTERVAL_SEC, self._on_slam_overlay_tick)
 
-        self._thread = threading.Thread(target=self._run_ws_loop, daemon=True)
-        self._thread.start()
+        # CAREGUARD_LINK=ros2 면 WebSocket 대신 중앙 서버 ROS 2 브리지 링크로 보낸다.
+        self._ros2_link = None
+        if ws_config.LINK_MODE == 'ros2':
+            self._ros2_link = Ros2Link(self, ws_config.ROBOT_CODE, 'uplink', lambda raw: None,
+                                       self.get_logger(), role_label='업링크')
+            self._ros2_link.start()
+        else:
+            self._thread = threading.Thread(target=self._run_ws_loop, daemon=True)
+            self._thread.start()
 
         # 영상 업로드 워처. WS 연결과 무관한 별개의 백그라운드 스레드.
         media_uploader.start_video_upload_watcher(self.get_logger())
@@ -351,6 +359,9 @@ class UplinkNode(Node):
         self._send(payload)
 
     def _send(self, payload: dict):
+        if self._ros2_link is not None:
+            self._ros2_link.send(payload)  # 연결 전이면 Ros2Link 가 조용히 버린다
+            return
         if not self._connected or self._ws is None:
             return
         asyncio.run_coroutine_threadsafe(self._ws.send(json.dumps(payload)), self._loop)

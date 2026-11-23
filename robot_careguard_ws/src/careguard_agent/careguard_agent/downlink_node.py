@@ -32,6 +32,7 @@ from careguard_msgs.msg import Waypoint as WaypointMsg
 from careguard_msgs.srv import PillboxSlot
 
 from . import media_uploader, ws_config
+from .ros2_link import Ros2Link
 
 RECONNECT_DELAY_SEC = 3.0
 
@@ -196,9 +197,18 @@ class DownlinkNode(Node):
         self._voice_pub = self.create_publisher(String, VOICE_TOPIC, 10)
         self._call_state_pub = self.create_publisher(Bool, CALL_STATE_TOPIC, 10)
 
-        self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._run_ws_loop, daemon=True)
-        self._thread.start()
+        # CAREGUARD_LINK=ros2 면 서버로 WebSocket 을 열지 않고 중앙 서버 ROS 2 브리지와
+        # 토픽으로 통신한다(ros2_link.Ros2Link). 명령 콜백(_handle_command)은 WS 모드와
+        # 마찬가지로 rclpy executor 가 아닌 별도 스레드에서 돈다.
+        self._ros2_link = None
+        if ws_config.LINK_MODE == 'ros2':
+            self._ros2_link = Ros2Link(self, ws_config.ROBOT_CODE, 'downlink', self._handle_command,
+                                       self.get_logger(), role_label='다운링크')
+            self._ros2_link.start()
+        else:
+            self._loop = asyncio.new_event_loop()
+            self._thread = threading.Thread(target=self._run_ws_loop, daemon=True)
+            self._thread.start()
 
         # video_recorder/audio_player는 map_id에 안 묶이는, "한 번 뜨면 계속 재사용"되는
         # 프로세스다(_ensure_video_recorder_running/_ensure_voice_announcer_running 주석
@@ -246,6 +256,12 @@ class DownlinkNode(Node):
         # 그대로 되쏜다 — uplink_node의 별도 연결을 굳이 거칠 필요가 없다. _handle_command가
         # 이미 이 코루틴과 같은 스레드/이벤트루프에서 돌지만, uplink_node와 같은 방식
         # (run_coroutine_threadsafe)으로 통일해 어디서 불러도 안전하게 한다.
+        if self._ros2_link is not None:
+            if not self._ros2_link.is_connected:
+                self.get_logger().warn('다운링크(ROS 2 브리지) 연결이 없어 메시지를 보낼 수 없습니다')
+                return
+            self._ros2_link.send(payload)
+            return
         if self._ws is None:
             self.get_logger().warn('다운링크 연결이 없어 메시지를 보낼 수 없습니다')
             return

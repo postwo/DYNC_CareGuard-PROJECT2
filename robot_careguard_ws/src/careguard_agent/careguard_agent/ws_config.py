@@ -10,3 +10,8 @@ ROBOT_CODE = os.environ.get('CAREGUARD_ROBOT_CODE', 'R-01')
 
 # video_recorder.py가 mp4+json을 쌓는 폴더와 같은 값이어야 한다.
 VIDEO_DIR = Path(os.environ.get('CAREGUARD_VIDEO_DIR', os.path.expanduser('~/careguard_data/videos')))
+
+# 서버 실시간 채널 전송 방식(careguard_turtlebot_agent/ws_config.py 와 동일 관례).
+# ws(기본): 기존 /ws/robot WebSocket. ros2: 중앙 서버 ROS 2 브리지(pc_careguard/ros2_bridge)와
+# DDS 토픽으로 통신 — 맵/미디어 업로드 같은 REST 호출은 그대로 HTTP 를 쓴다.
+LINK_MODE = os.environ.get('CAREGUARD_LINK', 'ws').strip().lower()
