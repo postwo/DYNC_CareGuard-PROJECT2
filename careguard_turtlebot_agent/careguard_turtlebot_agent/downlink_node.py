@@ -22,6 +22,8 @@ patrol_start 처리가 없어서 "명령이 어디로 갔는지 모르는" 상�
 2026-09-15: 파일 하나(원래 844줄 — ArUco 도킹까지 얹혀있던 시절, 마커 코드
 롤백 후 601줄)에 몰려있던 책임을 클래스별 파일로 나눴다:
   - server_link.ServerLink — 서버 WebSocket 연결(재연결 루프)
+  - ros2_link.Ros2Link — CAREGUARD_LINK=ros2 일 때 WS 대신 쓰는 ROS 2 브리지 링크
+    (link_factory.create_server_link 가 둘 중 하나를 고른다)
   - voice.VoiceAnnouncer — Piper TTS 음성 안내
   - waypoints.fetch_charge_waypoint — 충전 스테이션 좌표 조회
   - nav2_manager.Nav2Manager — 맵 다운로드 + Nav2 기동/종료 + 초기 위치 + 주행
@@ -40,11 +42,10 @@ from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from . import ws_config
 from .errors import WaypointLookupError
 from .nav2_manager import Nav2Manager
 from .patrol_controller import PatrolController
-from .server_link import ServerLink
+from .link_factory import create_server_link
 from .voice import VoiceAnnouncer
 from .waypoints import fetch_charge_waypoint
 
@@ -53,10 +54,12 @@ class DownlinkNode(Node):
     def __init__(self):
         super().__init__('downlink_node')
 
-        self._link = ServerLink(
-            url=f'{ws_config.SERVER_WS_URL}/ws/robot?robot_code={ws_config.ROBOT_CODE}&role=downlink',
+        # CAREGUARD_LINK=ws(기본)면 기존 WebSocket, ros2 면 중앙 서버 ROS 2 브리지 링크.
+        self._link = create_server_link(
+            self, 'downlink',
             on_message=self._handle_command,
-            logger=self.get_logger())
+            logger=self.get_logger(),
+            role_label='다운링크')
         self._nav2 = Nav2Manager(self, on_status=self._send_nav_status)
         self._voice = VoiceAnnouncer(self.get_logger())
         # perception/video_recorder.py(PATROL_RECORDING_TOPIC)가 구독 — 순찰 중에도

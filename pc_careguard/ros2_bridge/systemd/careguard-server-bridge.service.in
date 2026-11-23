@@ -1,0 +1,20 @@
+[Unit]
+Description=CareGuard central server ROS 2 bridge (robot DDS topics <-> FastAPI /ws/robot)
+After=careguard-server.service network-online.target
+Wants=network-online.target careguard-server.service
+
+[Service]
+Type=simple
+# server/systemd/careguard-server.service.in 과 같은 방식: @SERVICE_USER@/@ROS_WS@ 를 치환해 설치한다.
+#   sed -e "s|@SERVICE_USER@|$USER|" -e "s|@ROS_WS@|$HOME/careguard_server_ws|" careguard-server-bridge.service.in | sudo tee /etc/systemd/system/careguard-server-bridge.service
+User=@SERVICE_USER@
+Environment=CAREGUARD_SERVER_URL=http://127.0.0.1:8000
+Environment=RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# 로봇 등록 시 ros_domain_id 를 비워둔 로봇은 이 도메인으로 붙는다.
+Environment=ROS_DOMAIN_ID=0
+ExecStart=/bin/bash -lc 'source /opt/ros/humble/setup.bash && source @ROS_WS@/install/setup.bash && exec ros2 run careguard_server_bridge bridge_node'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -81,7 +81,7 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import BatteryState, CompressedImage, LaserScan
 
 from . import ws_config
-from .server_link import ServerLink
+from .link_factory import create_server_link
 
 DEFAULT_RECONNECT_DELAY_SEC = 3.0
 
@@ -143,12 +143,15 @@ class UplinkNode(Node):
         # 취급해서, 이 연결이 downlink_node의 명령 수신용 연결을 덮어써버린다. 그러면 서버가
         # patrol_start/nav_prepare를 이 uplink 연결로 보내게 돼 downlink_node가 명령을 영영
         # 못 받는다 — 2026-09-14 R-06에서 nav_prepare가 로봇까지 안 오는 문제로 실제 확인했다.
-        self._link = ServerLink(
-            url=f'{ws_config.SERVER_WS_URL}/ws/robot?robot_code={ws_config.ROBOT_CODE}&role=uplink',
+        # CAREGUARD_LINK=ros2 면 WebSocket 대신 ROS 2 브리지 링크(ros2_link.Ros2Link)를 쓴다 —
+        # 그때는 재연결 주기가 의미 없으니(브리지가 연결을 관리) 서버 조회도 건너뛴다.
+        self._link = create_server_link(
+            self, 'uplink',
             on_message=lambda raw: None,  # 업링크는 서버가 보내는 메시지를 쓰지 않는다
             logger=self.get_logger(),
             role_label='업링크',
-            reconnect_delay_sec=_fetch_reconnect_delay_sec(self.get_logger()))
+            reconnect_delay_sec=(None if ws_config.LINK_MODE == 'ros2'
+                                 else _fetch_reconnect_delay_sec(self.get_logger())))
         self._last_camera_sent_at = 0.0
         self._latest_scan = None
 
