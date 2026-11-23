@@ -152,9 +152,26 @@
 
 ## 5. 시스템 아키텍처
 
+### 하드웨어 아키텍처
+
 <p align="center">
-  <img src="docs/images/architecture.png" alt="CareGuard 시스템 아키텍처" width="85%" />
+  <img src="docs/images/hardware_architecture.png" alt="CareGuard 하드웨어 아키텍처" width="100%" />
 </p>
+
+### 소프트웨어 아키텍처
+
+<p align="center">
+  <img src="docs/images/software_architecture.png" alt="CareGuard 소프트웨어 아키텍처" width="100%" />
+</p>
+
+<details>
+<summary><b>기존 시스템 구성도</b></summary>
+
+<p align="center">
+  <img src="docs/images/architecture.png" alt="CareGuard 시스템 아키텍처 (기존)" width="85%" />
+</p>
+
+</details>
 
 - 로봇은 서버와의 **유일한 통신구인 agent**(`careguard_agent` / `careguard_turtlebot_agent`의 uplink·downlink 노드)로만 외부와 통신합니다. 다른 ROS 2 노드는 서버를 직접 알지 못합니다.
 - agent ↔ 서버 실시간 채널은 **WebSocket(기본)** 또는 **ROS 2 DDS(`CAREGUARD_LINK=ros2`)** 중 하나로 운용합니다. ROS 2 모드에서는 중앙 서버 PC의 `careguard_server_bridge`가 FastAPI의 기존 `/ws/robot`으로 그대로 중계합니다([8장](#8-중앙-서버와-ros-2-통신)).
@@ -165,11 +182,9 @@
 
 ## 6. 하드웨어 구성
 
-### 6.1 하드웨어 아키텍처
+### 6.1 로봇별 하드웨어 사양
 
-<p align="center">
-  <img src="docs/images/hardware_architecture.png" alt="CareGuard 하드웨어 구성도" width="100%" />
-</p>
+> 장비 간 연결은 [5장 하드웨어 아키텍처](#하드웨어-아키텍처)를 참고하세요.
 
 | 구분 | LIMO (R-07) | TurtleBot3 Burger (R-05 / R-06) |
 | :-- | :-- | :-- |
