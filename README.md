@@ -10,41 +10,46 @@
 
 > **로봇이 집 안을 돌며 대상자를 확인하고, 약을 건네고, 위급 상황을 바로 알립니다.**
 
-| LIMO (R-07) 순찰 | TurtleBot3 (R-05 / R-06) 순찰 |
-| :-: | :-: |
-| <img src="docs/images/patrol_limo_driving.gif" alt="LIMO 순찰 주행" width="100%" /> | <img src="docs/images/patrol_turtlebot_driving.gif" alt="TurtleBot3 순찰 주행" width="100%" /> |
-| [▶ 시연 영상 1](https://youtu.be/W13FbSS3s6g) | [▶ 시연 영상 2](https://youtu.be/5YQFwCbIxe0) |
+<table>
+<thead>
+<tr><th align="center">LIMO (R-07) 순찰</th><th align="center">TurtleBot3 (R-05 / R-06) 순찰</th></tr>
+</thead>
+<tbody><tr><td align="center"><img src="docs/images/patrol_limo_driving.gif" alt="LIMO 순찰 주행" width="100%" /></td><td align="center"><img src="docs/images/patrol_turtlebot_driving.gif" alt="TurtleBot3 순찰 주행" width="100%" /></td></tr></tbody>
+<tbody><tr><td align="center"><a href="https://youtu.be/W13FbSS3s6g">▶ 시연 영상 1</a></td><td align="center"><a href="https://youtu.be/5YQFwCbIxe0">▶ 시연 영상 2</a></td></tr></tbody>
+</table>
 
 ---
 
 ## 1. 팀 구성 및 역할
 
 <table>
-  <tr>
+<thead>
+<tr>
     <th nowrap>담당자</th>
     <th nowrap>담당 파트</th>
     <th>주요 기여</th>
   </tr>
-  <tr>
+</thead>
+<tbody><tr>
     <td align="center" nowrap>최치언</td>
     <td align="center" nowrap>로봇 연동 ·<br>통합 관제 · 로봇 상세 ·<br>로봇·계정·임계값 설정 ·<br>통합 로그</td>
     <td>터틀봇·LIMO 서버 연동과 Tailscale 원격 연결, 부팅 시 자동 실행, 배터리 경보·자동 충전 복귀, 복약 미수령 감지, 로봇 상세·통합관제 화면</td>
-  </tr>
-  <tr>
+  </tr></tbody>
+<tbody><tr>
     <td align="center" nowrap>도희정</td>
     <td align="center" nowrap>이벤트 · 대상자 ·<br>순찰 파이프라인</td>
     <td>P2 이벤트·P3 대상자 관리, 순찰 일시정지·재개·SOS 끼어들기, 대상자/침입자 판별과 care_event 생성, 보호자 이메일 알림</td>
-  </tr>
-  <tr>
+  </tr></tbody>
+<tbody><tr>
     <td align="center" nowrap>강유나</td>
     <td align="center" nowrap>얼굴 인식 ·<br>매핑 · 키오스크</td>
     <td>얼굴 데이터 수집·YOLO 학습·임베딩 정확도 개선, P5 매핑·P6 순찰 스케줄 화면, 로봇 후면 키오스크</td>
-  </tr>
-  <tr>
+  </tr></tbody>
+<tbody><tr>
     <td align="center" nowrap>김예은</td>
     <td align="center" nowrap>복약 하드웨어 ·<br>영상 · 음성</td>
     <td>약통 펌웨어와 <code>pillbox_controller</code>, ESP32 응급 호출 버튼, 순찰 영상 녹화·음성 안내, 권한별 대시보드 화면</td>
-  </tr>
+  </tr></tbody>
 </table>
 
 
@@ -74,13 +79,16 @@
 
 ## 4. 운영 환경 및 개발 정보
 
-| 항목 | 내용 |
-| :-- | :-- |
-| 대상 | 상시 대면 케어가 어려운 독거노인 가정 |
-| 로봇 | LIMO (R-07), TurtleBot3 Burger (R-05 · R-06) |
-| 운용 | 중앙 서버 1대가 여러 로봇과 관제 화면·보호자 알림을 연결 |
-| 네트워크 | 같은 공유기의 로봇은 Wi-Fi LAN, 다른 공유기의 로봇은 Tailscale VPN으로 서버에 연결 |
-| 개발 기간 | 2026.09.06 ~ 09.18 |
+<table>
+<thead>
+<tr><th align="left">항목</th><th align="left">내용</th></tr>
+</thead>
+<tbody><tr><td align="left">대상</td><td align="left">상시 대면 케어가 어려운 독거노인 가정</td></tr></tbody>
+<tbody><tr><td align="left">로봇</td><td align="left">LIMO (R-07), TurtleBot3 Burger (R-05 · R-06)</td></tr></tbody>
+<tbody><tr><td align="left">운용</td><td align="left">중앙 서버 1대가 여러 로봇과 관제 화면·보호자 알림을 연결</td></tr></tbody>
+<tbody><tr><td align="left">네트워크</td><td align="left">같은 공유기의 로봇은 Wi-Fi LAN, 다른 공유기의 로봇은 Tailscale VPN으로 서버에 연결</td></tr></tbody>
+<tbody><tr><td align="left">개발 기간</td><td align="left">2026.09.06 ~ 09.18</td></tr></tbody>
+</table>
 
 ## 5. 핵심 기능
 
@@ -93,23 +101,26 @@
 
 ## 6. 기능 요구사항
 
-| ID | 기능 | 요구사항 |
-| :-- | :-- | :-- |
-| F-01 | 순찰 스케줄 | 예약 시각에 순찰을 시작하고, 로봇이 끊겨 있으면 다음 주기에 다시 시도한다. |
-| F-02 | 웨이포인트 순회 | 등록된 경로를 순서대로 돌고 끝나면 충전소로 복귀한다. |
-| F-03 | 재실 확인 | 순찰 중 얼굴을 검출해 등록된 대상자인지 판별한다. |
-| F-04 | 침입자 감지 | 정지 → 접근 → 재판별 후 미등록이면 `INTRUDER` 이벤트를 만든다. |
-| F-05 | 복약 전달 | 음성 안내 → 약통 개방 → IR 수령 확인 → 결과 기록 순으로 진행한다. |
-| F-06 | 미수령 경보 | 미수령이 반복되면 이벤트로 올리고 보호자에게 메일을 보낸다. |
-| F-07 | SOS 수신 | 화면 버튼·물리 버튼(MQTT)·음성으로 응급 이벤트를 만든다. |
-| F-08 | 스피커 통화 | 관제사와 대상자가 로봇을 통해 양방향으로 통화한다. |
-| F-09 | 배터리 보호 | 주의 임계값에서 경보하고, 복귀 임계값에서 충전소로 돌아간다. |
-| F-10 | 실시간 관제 | 위치·배터리·카메라·라이다·순찰 진행을 실시간으로 보여 준다. |
-| F-11 | SLAM · 원격 조종 | 대시보드에서 지도를 만들고 방향키로 로봇을 조종한다. |
-| F-12 | 권한 분리 | 관제사와 보호자 계정을 나누고, 보호자는 자기 대상자만 본다. |
-| F-13 | 감사 로그 | 영상 열람·비상정지·119·설정 변경 이력을 남긴다. |
-| F-14 | 후면 키오스크 | 배터리·순찰·통화 상태를 로봇 뒷면 화면에 표시한다. |
-| F-15 | ROS 2 링크 | 로봇과 서버의 실시간 연결을 ROS 2 토픽으로도 운용한다. |
+<table>
+<thead>
+<tr><th align="left">ID</th><th align="left">기능</th><th align="left">요구사항</th></tr>
+</thead>
+<tbody><tr><td align="left">F-01</td><td align="left">순찰 스케줄</td><td align="left">예약 시각에 순찰을 시작하고, 로봇이 끊겨 있으면 다음 주기에 다시 시도한다.</td></tr></tbody>
+<tbody><tr><td align="left">F-02</td><td align="left">웨이포인트 순회</td><td align="left">등록된 경로를 순서대로 돌고 끝나면 충전소로 복귀한다.</td></tr></tbody>
+<tbody><tr><td align="left">F-03</td><td align="left">재실 확인</td><td align="left">순찰 중 얼굴을 검출해 등록된 대상자인지 판별한다.</td></tr></tbody>
+<tbody><tr><td align="left">F-04</td><td align="left">침입자 감지</td><td align="left">정지 → 접근 → 재판별 후 미등록이면 <code>INTRUDER</code> 이벤트를 만든다.</td></tr></tbody>
+<tbody><tr><td align="left">F-05</td><td align="left">복약 전달</td><td align="left">음성 안내 → 약통 개방 → IR 수령 확인 → 결과 기록 순으로 진행한다.</td></tr></tbody>
+<tbody><tr><td align="left">F-06</td><td align="left">미수령 경보</td><td align="left">미수령이 반복되면 이벤트로 올리고 보호자에게 메일을 보낸다.</td></tr></tbody>
+<tbody><tr><td align="left">F-07</td><td align="left">SOS 수신</td><td align="left">화면 버튼·물리 버튼(MQTT)·음성으로 응급 이벤트를 만든다.</td></tr></tbody>
+<tbody><tr><td align="left">F-08</td><td align="left">스피커 통화</td><td align="left">관제사와 대상자가 로봇을 통해 양방향으로 통화한다.</td></tr></tbody>
+<tbody><tr><td align="left">F-09</td><td align="left">배터리 보호</td><td align="left">주의 임계값에서 경보하고, 복귀 임계값에서 충전소로 돌아간다.</td></tr></tbody>
+<tbody><tr><td align="left">F-10</td><td align="left">실시간 관제</td><td align="left">위치·배터리·카메라·라이다·순찰 진행을 실시간으로 보여 준다.</td></tr></tbody>
+<tbody><tr><td align="left">F-11</td><td align="left">SLAM · 원격 조종</td><td align="left">대시보드에서 지도를 만들고 방향키로 로봇을 조종한다.</td></tr></tbody>
+<tbody><tr><td align="left">F-12</td><td align="left">권한 분리</td><td align="left">관제사와 보호자 계정을 나누고, 보호자는 자기 대상자만 본다.</td></tr></tbody>
+<tbody><tr><td align="left">F-13</td><td align="left">감사 로그</td><td align="left">영상 열람·비상정지·119·설정 변경 이력을 남긴다.</td></tr></tbody>
+<tbody><tr><td align="left">F-14</td><td align="left">후면 키오스크</td><td align="left">배터리·순찰·통화 상태를 로봇 뒷면 화면에 표시한다.</td></tr></tbody>
+<tbody><tr><td align="left">F-15</td><td align="left">ROS 2 링크</td><td align="left">로봇과 서버의 실시간 연결을 ROS 2 토픽으로도 운용한다.</td></tr></tbody>
+</table>
 
 ## 7. 시스템 아키텍처
 
@@ -123,28 +134,31 @@
 
 ## 8. 로봇 구성
 
-| 구분 | LIMO (R-07) | TurtleBot3 (R-05 / R-06) |
-| :-- | :-- | :-- |
-| 메인 컴퓨터 | Jetson Nano | Raspberry Pi |
-| LiDAR | YDLIDAR 2D | LDS-03 |
-| 카메라 | Orbbec Dabai | IMX219 |
-| 약통 | 2칸 (서보 D3·D4 / IR D9·D8) | 1칸, R-06 (서보 D4 / IR D5) |
-| 음성 | 스피커 · 마이크 (TTS · 통화) | 스피커 (TTS) |
-| 화면 | 후면 7인치 키오스크 | — |
-| ROS_DOMAIN_ID | 40 | 50 |
-| 서버 연결 | Wi-Fi LAN (서버와 같은 공유기) | Tailscale VPN (다른 공유기) |
+<table>
+<thead>
+<tr><th align="left">구분</th><th align="left">LIMO (R-07)</th><th align="left">TurtleBot3 (R-05 / R-06)</th></tr>
+</thead>
+<tbody><tr><td align="left">메인 컴퓨터</td><td align="left">Jetson Nano</td><td align="left">Raspberry Pi</td></tr></tbody>
+<tbody><tr><td align="left">LiDAR</td><td align="left">YDLIDAR 2D</td><td align="left">LDS-03</td></tr></tbody>
+<tbody><tr><td align="left">카메라</td><td align="left">Orbbec Dabai</td><td align="left">IMX219</td></tr></tbody>
+<tbody><tr><td align="left">약통</td><td align="left">2칸 (서보 D3·D4 / IR D9·D8)</td><td align="left">1칸, R-06 (서보 D4 / IR D5)</td></tr></tbody>
+<tbody><tr><td align="left">음성</td><td align="left">스피커 · 마이크 (TTS · 통화)</td><td align="left">스피커 (TTS)</td></tr></tbody>
+<tbody><tr><td align="left">화면</td><td align="left">후면 7인치 키오스크</td><td align="left">—</td></tr></tbody>
+<tbody><tr><td align="left">ROS_DOMAIN_ID</td><td align="left">40</td><td align="left">50</td></tr></tbody>
+<tbody><tr><td align="left">서버 연결</td><td align="left">Wi-Fi LAN (서버와 같은 공유기)</td><td align="left">Tailscale VPN (다른 공유기)</td></tr></tbody>
+</table>
 
 <table>
-  <tr>
+<tbody><tr>
     <td align="center" width="33%"><img src="docs/images/photos/limo_r07_rear_screen.jpg" alt="LIMO 후면 키오스크 화면" width="95%" /></td>
     <td align="center" width="33%"><img src="docs/images/photos/turtlebot_pillbox.jpg" alt="TurtleBot3 약통 탑재" width="95%" /></td>
     <td align="center" width="33%"><img src="docs/images/photos/patrol_face_check.jpg" alt="등록 대상자 사진 앞 순찰" width="95%" /></td>
-  </tr>
-  <tr>
+  </tr></tbody>
+<tbody><tr>
     <td align="center">LIMO · 후면 키오스크</td>
     <td align="center">TurtleBot3 · 약통 탑재</td>
     <td align="center">순찰 중 재실 확인</td>
-  </tr>
+  </tr></tbody>
 </table>
 
 ### 약통(디스펜서) 구조
@@ -226,11 +240,14 @@
 - **온라인 판정** : 로봇 신호가 3초 끊기면 연결을 닫아 대시보드에 오프라인으로 표시된다.
 - **영향 범위** : 서버 코드는 바꾸지 않았고, 설정하지 않으면 로봇은 예전처럼 동작한다.
 
-| 토픽 | 방향 | 내용 |
-| :-- | :-- | :-- |
-| `/careguard/<robot>/to_server/*` | 로봇 → 서버 | 위치 · 배터리 · 카메라 · 순찰 진행 |
-| `/careguard/<robot>/to_robot` | 서버 → 로봇 | 순찰 시작 · 초기 위치 · 원격 명령 |
-| `/careguard/<robot>/link_heartbeat` | 로봇 → 브리지 | 1초마다 생존 신호 |
+<table>
+<thead>
+<tr><th align="left">토픽</th><th align="left">방향</th><th align="left">내용</th></tr>
+</thead>
+<tbody><tr><td align="left"><code>/careguard/&lt;robot&gt;/to_server/*</code></td><td align="left">로봇 → 서버</td><td align="left">위치 · 배터리 · 카메라 · 순찰 진행</td></tr></tbody>
+<tbody><tr><td align="left"><code>/careguard/&lt;robot&gt;/to_robot</code></td><td align="left">서버 → 로봇</td><td align="left">순찰 시작 · 초기 위치 · 원격 명령</td></tr></tbody>
+<tbody><tr><td align="left"><code>/careguard/&lt;robot&gt;/link_heartbeat</code></td><td align="left">로봇 → 브리지</td><td align="left">1초마다 생존 신호</td></tr></tbody>
+</table>
 
 <img src="docs/images/ros2_bridge_architecture.png" alt="ROS 2 브리지 구성" width="100%" />
 
@@ -238,46 +255,52 @@
 
 ## 12. 관제 대시보드
 
-| 화면 | 주요 기능 |
-| :-- | :-- |
-| P1 통합 관제 | 로봇·대상자 상태, 알림 피드, 로봇별 비상정지 |
-| P2 이벤트 관제 | 미처리 이벤트, 상세 모달에서 통화·119·조치 |
-| P3 대상자 관리 | 위험도 순 카드, 복약 스케줄, 보호자 연락처 |
-| P4 영상 관리 | 열람 사유 입력 후 재생, 열람 이력 기록 |
-| P5 맵 · 로봇 | SLAM 매핑, 방향키 원격 조종 |
-| P6 순찰 · 경로 | 웨이포인트·경로·스케줄 편집 |
-| P7 시스템 설정 | 로봇 등록, 계정, 임계값·알림 |
-| P8 통합 로그 | 순찰·복약·감사 로그 조회 |
+<table>
+<thead>
+<tr><th align="left">화면</th><th align="left">주요 기능</th></tr>
+</thead>
+<tbody><tr><td align="left">P1 통합 관제</td><td align="left">로봇·대상자 상태, 알림 피드, 로봇별 비상정지</td></tr></tbody>
+<tbody><tr><td align="left">P2 이벤트 관제</td><td align="left">미처리 이벤트, 상세 모달에서 통화·119·조치</td></tr></tbody>
+<tbody><tr><td align="left">P3 대상자 관리</td><td align="left">위험도 순 카드, 복약 스케줄, 보호자 연락처</td></tr></tbody>
+<tbody><tr><td align="left">P4 영상 관리</td><td align="left">열람 사유 입력 후 재생, 열람 이력 기록</td></tr></tbody>
+<tbody><tr><td align="left">P5 맵 · 로봇</td><td align="left">SLAM 매핑, 방향키 원격 조종</td></tr></tbody>
+<tbody><tr><td align="left">P6 순찰 · 경로</td><td align="left">웨이포인트·경로·스케줄 편집</td></tr></tbody>
+<tbody><tr><td align="left">P7 시스템 설정</td><td align="left">로봇 등록, 계정, 임계값·알림</td></tr></tbody>
+<tbody><tr><td align="left">P8 통합 로그</td><td align="left">순찰·복약·감사 로그 조회</td></tr></tbody>
+</table>
 
 <table>
-  <tr>
+<tbody><tr>
     <td align="center" width="50%"><img src="docs/images/dashboard/events.png" alt="P2 이벤트 관제" width="95%" /></td>
     <td align="center" width="50%"><img src="docs/images/dashboard/recipients.png" alt="P3 대상자 관리" width="95%" /></td>
-  </tr>
-  <tr>
+  </tr></tbody>
+<tbody><tr>
     <td align="center">P2 이벤트 관제</td>
     <td align="center">P3 대상자 관리</td>
-  </tr>
-  <tr>
+  </tr></tbody>
+<tbody><tr>
     <td align="center"><img src="docs/images/dashboard/videos.png" alt="P4 영상 관리" width="95%" /></td>
     <td align="center"><img src="docs/images/dashboard/map_mapping.png" alt="P5 맵과 로봇" width="95%" /></td>
-  </tr>
-  <tr>
+  </tr></tbody>
+<tbody><tr>
     <td align="center">P4 영상 관리</td>
     <td align="center">P5 맵 · 로봇</td>
-  </tr>
+  </tr></tbody>
 </table>
 
 ## 13. 주요 문제 해결
 
-| 문제 | 해결 |
-| :-- | :-- |
-| 복약 배출이 계속 `hw_error`·`jammed` | 약통 시리얼 포트 설정과 응답 읽기 방식 수정 ([기록](docs/TroubleShooting/2026-09-17-pillbox-hw-error-serial-port-and-ack-buffering.md)) |
-| 터틀봇 카메라가 화면에 안 뜸 | 카메라 중계 추가, 상하반전을 소프트웨어로 보정 ([기록](docs/TroubleShooting/2026-09-11-turtlebot-camera-relay.md)) |
-| ArUco 도킹 추가 후 CPU 과부하 | 카메라 처리를 도킹할 때만 켜도록 변경 ([기록](docs/TroubleShooting/2026-09-15-turtlebot-aruco-cpu-overload.md)) |
-| SOS 1회에 이벤트 2건 | 남아 있던 서버 프로세스 정리 ([기록](docs/TroubleShooting/2026-09-14-sos-button-duplicate-care-event.md)) |
-| 대시보드가 소켓 7개 사용 | 페이지별 연결을 하나로 공유 ([기록](docs/TroubleShooting/2026-09-14-dashboard-ws-duplicate-connections.md)) |
-| R-06 배터리·위치 값 유실 | OpenCR 포트를 고정 경로로 지정 ([기록](docs/TroubleShooting/2026-09-17-r06-online-status-and-opencr-usb-conflict.md)) |
+<table>
+<thead>
+<tr><th align="left">문제</th><th align="left">해결</th></tr>
+</thead>
+<tbody><tr><td align="left">복약 배출이 계속 <code>hw_error</code>·<code>jammed</code></td><td align="left">약통 시리얼 포트 설정과 응답 읽기 방식 수정 (<a href="docs/TroubleShooting/2026-09-17-pillbox-hw-error-serial-port-and-ack-buffering.md">기록</a>)</td></tr></tbody>
+<tbody><tr><td align="left">터틀봇 카메라가 화면에 안 뜸</td><td align="left">카메라 중계 추가, 상하반전을 소프트웨어로 보정 (<a href="docs/TroubleShooting/2026-09-11-turtlebot-camera-relay.md">기록</a>)</td></tr></tbody>
+<tbody><tr><td align="left">ArUco 도킹 추가 후 CPU 과부하</td><td align="left">카메라 처리를 도킹할 때만 켜도록 변경 (<a href="docs/TroubleShooting/2026-09-15-turtlebot-aruco-cpu-overload.md">기록</a>)</td></tr></tbody>
+<tbody><tr><td align="left">SOS 1회에 이벤트 2건</td><td align="left">남아 있던 서버 프로세스 정리 (<a href="docs/TroubleShooting/2026-09-14-sos-button-duplicate-care-event.md">기록</a>)</td></tr></tbody>
+<tbody><tr><td align="left">대시보드가 소켓 7개 사용</td><td align="left">페이지별 연결을 하나로 공유 (<a href="docs/TroubleShooting/2026-09-14-dashboard-ws-duplicate-connections.md">기록</a>)</td></tr></tbody>
+<tbody><tr><td align="left">R-06 배터리·위치 값 유실</td><td align="left">OpenCR 포트를 고정 경로로 지정 (<a href="docs/TroubleShooting/2026-09-17-r06-online-status-and-opencr-usb-conflict.md">기록</a>)</td></tr></tbody>
+</table>
 
 ## 14. 현재 한계
 
@@ -288,50 +311,62 @@
 
 ## 15. 소스 구성
 
-| 경로 | 역할 |
-| :-- | :-- |
-| [`pc_careguard/server/`](pc_careguard/server) | FastAPI 중앙 서버 — REST · WebSocket · 스케줄러 · MQTT · 이메일 |
-| [`pc_careguard/ros2_bridge/`](pc_careguard/ros2_bridge) | ROS 2 토픽 ↔ 서버 WebSocket 중계 |
-| [`pc_careguard/dashboard/`](pc_careguard/dashboard) | Qt6 관제 대시보드 (P1~P8) |
-| [`pc_careguard/db/`](pc_careguard/db) | PostgreSQL 스키마 · 마이그레이션 |
-| [`robot_careguard_ws/`](robot_careguard_ws) | LIMO 워크스페이스 — agent · 순찰 · 복약 · 인식 · 약통 |
-| [`careguard_turtlebot_agent/`](careguard_turtlebot_agent) | TurtleBot3 agent |
-| [`deploy/`](deploy) | Docker Compose · mosquitto · 후면 키오스크 |
-| [`docs/`](docs) | 시나리오 · 설계 · 트러블슈팅 · 이미지 |
+<table>
+<thead>
+<tr><th align="left">경로</th><th align="left">역할</th></tr>
+</thead>
+<tbody><tr><td align="left"><a href="pc_careguard/server"><code>pc_careguard/server/</code></a></td><td align="left">FastAPI 중앙 서버 — REST · WebSocket · 스케줄러 · MQTT · 이메일</td></tr></tbody>
+<tbody><tr><td align="left"><a href="pc_careguard/ros2_bridge"><code>pc_careguard/ros2_bridge/</code></a></td><td align="left">ROS 2 토픽 ↔ 서버 WebSocket 중계</td></tr></tbody>
+<tbody><tr><td align="left"><a href="pc_careguard/dashboard"><code>pc_careguard/dashboard/</code></a></td><td align="left">Qt6 관제 대시보드 (P1~P8)</td></tr></tbody>
+<tbody><tr><td align="left"><a href="pc_careguard/db"><code>pc_careguard/db/</code></a></td><td align="left">PostgreSQL 스키마 · 마이그레이션</td></tr></tbody>
+<tbody><tr><td align="left"><a href="robot_careguard_ws"><code>robot_careguard_ws/</code></a></td><td align="left">LIMO 워크스페이스 — agent · 순찰 · 복약 · 인식 · 약통</td></tr></tbody>
+<tbody><tr><td align="left"><a href="careguard_turtlebot_agent"><code>careguard_turtlebot_agent/</code></a></td><td align="left">TurtleBot3 agent</td></tr></tbody>
+<tbody><tr><td align="left"><a href="deploy"><code>deploy/</code></a></td><td align="left">Docker Compose · mosquitto · 후면 키오스크</td></tr></tbody>
+<tbody><tr><td align="left"><a href="docs"><code>docs/</code></a></td><td align="left">시나리오 · 설계 · 트러블슈팅 · 이미지</td></tr></tbody>
+</table>
 
 ## 16. 프로젝트 기술 스택
 
-| 구분 | 사용 기술 |
-| :-- | :-- |
-| Robot / Hardware | LIMO, TurtleBot3, Jetson Nano, Raspberry Pi, Arduino, ESP32 |
-| Robot Middleware | ROS 2 Humble, Nav2, Cartographer, CycloneDDS |
-| AI Vision · Voice | OpenCV, YOLO 얼굴 검출, 얼굴 임베딩, Piper TTS, Opus |
-| Backend | FastAPI, WebSocket, PostgreSQL 16, MQTT(mosquitto), SMTP |
-| GUI | Qt6 (C++), HTML/JS 키오스크 |
-| 운영 · 협업 | Docker Compose, systemd, Tailscale, GitHub Actions, pytest |
+<table>
+<thead>
+<tr><th align="left">구분</th><th align="left">사용 기술</th></tr>
+</thead>
+<tbody><tr><td align="left">Robot / Hardware</td><td align="left">LIMO, TurtleBot3, Jetson Nano, Raspberry Pi, Arduino, ESP32</td></tr></tbody>
+<tbody><tr><td align="left">Robot Middleware</td><td align="left">ROS 2 Humble, Nav2, Cartographer, CycloneDDS</td></tr></tbody>
+<tbody><tr><td align="left">AI Vision · Voice</td><td align="left">OpenCV, YOLO 얼굴 검출, 얼굴 임베딩, Piper TTS, Opus</td></tr></tbody>
+<tbody><tr><td align="left">Backend</td><td align="left">FastAPI, WebSocket, PostgreSQL 16, MQTT(mosquitto), SMTP</td></tr></tbody>
+<tbody><tr><td align="left">GUI</td><td align="left">Qt6 (C++), HTML/JS 키오스크</td></tr></tbody>
+<tbody><tr><td align="left">운영 · 협업</td><td align="left">Docker Compose, systemd, Tailscale, GitHub Actions, pytest</td></tr></tbody>
+</table>
 
 ## 17. 설치와 실행
 
-| 순서 | 실행 명령 |
-| :-- | :-- |
-| 1. DB · MQTT | `cd deploy && cp .env.example .env && docker compose up -d` |
-| 2. 서버 | `cd pc_careguard/server && pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000` |
-| 3. 대시보드 | `cd pc_careguard/dashboard && cmake -B build && cmake --build build && ./build/careguard_dashboard` |
-| 4. 로봇 | 각 로봇의 systemd 서비스로 자동 기동 |
-| 5. ROS 2 링크 (선택) | 로봇에 `CAREGUARD_LINK=ros2` 설정 후 `ros2 launch careguard_server_bridge bridge.launch.py` |
+<table>
+<thead>
+<tr><th align="left">순서</th><th align="left">실행 명령</th></tr>
+</thead>
+<tbody><tr><td align="left">1. DB · MQTT</td><td align="left"><code>cd deploy &amp;&amp; cp .env.example .env &amp;&amp; docker compose up -d</code></td></tr></tbody>
+<tbody><tr><td align="left">2. 서버</td><td align="left"><code>cd pc_careguard/server &amp;&amp; pip install -r requirements.txt &amp;&amp; uvicorn app.main:app --host 0.0.0.0 --port 8000</code></td></tr></tbody>
+<tbody><tr><td align="left">3. 대시보드</td><td align="left"><code>cd pc_careguard/dashboard &amp;&amp; cmake -B build &amp;&amp; cmake --build build &amp;&amp; ./build/careguard_dashboard</code></td></tr></tbody>
+<tbody><tr><td align="left">4. 로봇</td><td align="left">각 로봇의 systemd 서비스로 자동 기동</td></tr></tbody>
+<tbody><tr><td align="left">5. ROS 2 링크 (선택)</td><td align="left">로봇에 <code>CAREGUARD_LINK=ros2</code> 설정 후 <code>ros2 launch careguard_server_bridge bridge.launch.py</code></td></tr></tbody>
+</table>
 
 자세한 절차는 [`docs/WORKSPACE_GUIDE.md`](docs/WORKSPACE_GUIDE.md)를 참고하세요.
 
 ## 18. 문서
 
-| 문서 | 내용 |
-| :-- | :-- |
-| [CareGuard_SCENARIO.md](docs/CareGuard_SCENARIO.md) | 사용 시나리오 7종 · 알려진 한계 |
-| [WORKSPACE_GUIDE.md](docs/WORKSPACE_GUIDE.md) | 저장소 구조 · 실행 방법 · DB 스키마 |
-| [FOLDER_STRUCTURE.md](docs/FOLDER_STRUCTURE.md) | 패키지 · 파일 설계 |
-| [CareGuard_DESIGN_SYSTEM.md](docs/design/CareGuard_DESIGN_SYSTEM.md) | 화면 상태 배지 · 퀵액션 기준 |
-| [ros2_link.md](shared/api_contract/ros2_link.md) | 로봇 ↔ 서버 ROS 2 토픽 계약 |
-| [TroubleShooting/](docs/TroubleShooting) | 문제 · 원인 · 해결 기록 31건 |
+<table>
+<thead>
+<tr><th align="left">문서</th><th align="left">내용</th></tr>
+</thead>
+<tbody><tr><td align="left"><a href="docs/CareGuard_SCENARIO.md">CareGuard_SCENARIO.md</a></td><td align="left">사용 시나리오 7종 · 알려진 한계</td></tr></tbody>
+<tbody><tr><td align="left"><a href="docs/WORKSPACE_GUIDE.md">WORKSPACE_GUIDE.md</a></td><td align="left">저장소 구조 · 실행 방법 · DB 스키마</td></tr></tbody>
+<tbody><tr><td align="left"><a href="docs/FOLDER_STRUCTURE.md">FOLDER_STRUCTURE.md</a></td><td align="left">패키지 · 파일 설계</td></tr></tbody>
+<tbody><tr><td align="left"><a href="docs/design/CareGuard_DESIGN_SYSTEM.md">CareGuard_DESIGN_SYSTEM.md</a></td><td align="left">화면 상태 배지 · 퀵액션 기준</td></tr></tbody>
+<tbody><tr><td align="left"><a href="shared/api_contract/ros2_link.md">ros2_link.md</a></td><td align="left">로봇 ↔ 서버 ROS 2 토픽 계약</td></tr></tbody>
+<tbody><tr><td align="left"><a href="docs/TroubleShooting">TroubleShooting/</a></td><td align="left">문제 · 원인 · 해결 기록 31건</td></tr></tbody>
+</table>
 
 ---
 
