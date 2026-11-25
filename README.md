@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/images/careguard_logo.png" alt="CareGuard 로고" width="120" />
+
 # DYNC CareGuard · 독거노인 순찰 · 복약 · 응급 대응 로봇
 
 ### 팀 DYNC · ROS 2 실내 자율주행 돌봄 로봇 프로젝트
