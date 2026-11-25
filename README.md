@@ -17,12 +17,33 @@
 
 ## 1. 팀 구성 및 역할
 
-| 담당자 | 담당 파트 | 주요 기여 |
-| :---: | :---: | --- |
-| 최치언 | 로봇 연동 ·<br>배터리 · 관제 화면 | 터틀봇·LIMO 서버 연동과 Tailscale 원격 연결, 부팅 시 자동 실행, 배터리 경보·자동 충전 복귀, 복약 미수령 감지, 로봇 상세·통합관제 화면 |
-| 도희정 | 이벤트 · 대상자 ·<br>순찰 파이프라인 | P2 이벤트·P3 대상자 관리, 순찰 일시정지·재개·SOS 끼어들기, 대상자/침입자 판별과 care_event 생성, 보호자 이메일 알림 |
-| 강유나 | 얼굴 인식 ·<br>매핑 · 키오스크 | 얼굴 데이터 수집·YOLO 학습·임베딩 정확도 개선, P5 매핑·P6 순찰 스케줄 화면, 로봇 후면 키오스크 |
-| 김예은 | 복약 하드웨어 ·<br>영상 · 음성 | 약통 펌웨어와 `pillbox_controller`, ESP32 응급 호출 버튼, 순찰 영상 녹화·음성 안내, 권한별 대시보드 화면 |
+<table>
+  <tr>
+    <th nowrap>담당자</th>
+    <th nowrap>담당 파트</th>
+    <th>주요 기여</th>
+  </tr>
+  <tr>
+    <td align="center" nowrap>최치언</td>
+    <td align="center" nowrap>로봇 연동 ·<br>배터리 · 관제 화면</td>
+    <td>터틀봇·LIMO 서버 연동과 Tailscale 원격 연결, 부팅 시 자동 실행, 배터리 경보·자동 충전 복귀, 복약 미수령 감지, 로봇 상세·통합관제 화면</td>
+  </tr>
+  <tr>
+    <td align="center" nowrap>도희정</td>
+    <td align="center" nowrap>이벤트 · 대상자 ·<br>순찰 파이프라인</td>
+    <td>P2 이벤트·P3 대상자 관리, 순찰 일시정지·재개·SOS 끼어들기, 대상자/침입자 판별과 care_event 생성, 보호자 이메일 알림</td>
+  </tr>
+  <tr>
+    <td align="center" nowrap>강유나</td>
+    <td align="center" nowrap>얼굴 인식 ·<br>매핑 · 키오스크</td>
+    <td>얼굴 데이터 수집·YOLO 학습·임베딩 정확도 개선, P5 매핑·P6 순찰 스케줄 화면, 로봇 후면 키오스크</td>
+  </tr>
+  <tr>
+    <td align="center" nowrap>김예은</td>
+    <td align="center" nowrap>복약 하드웨어 ·<br>영상 · 음성</td>
+    <td>약통 펌웨어와 <code>pillbox_controller</code>, ESP32 응급 호출 버튼, 순찰 영상 녹화·음성 안내, 권한별 대시보드 화면</td>
+  </tr>
+</table>
 
 > 담당 내용은 `git log`의 작성자별 커밋과 트러블슈팅 문서 작성자를 기준으로 정리했습니다.
 
