@@ -25,7 +25,7 @@
   </tr>
   <tr>
     <td align="center" nowrap>최치언</td>
-    <td align="center" nowrap>로봇 연동 ·<br>배터리 · 관제 화면</td>
+    <td align="center" nowrap>로봇 연동 ·<br>P1 통합 관제 · 로봇 상세 ·<br>P7 설정 · P8 통합 로그</td>
     <td>터틀봇·LIMO 서버 연동과 Tailscale 원격 연결, 부팅 시 자동 실행, 배터리 경보·자동 충전 복귀, 복약 미수령 감지, 로봇 상세·통합관제 화면</td>
   </tr>
   <tr>
